@@ -1,0 +1,277 @@
+{
+  "name": "fortinet_fortimanager_json_rpc",
+  "version": "1.0.0",
+  "label": "Fortinet FortiManager JSON RPC",
+  "description": "The Fortinet FortiManager JSON RPC Connector is a more advanced connector which provides freeform actions to use the json rpc api directly",
+  "publisher": "",
+  "icon_small_name": "FortiManager_small.png",
+  "icon_large_name": "FortiManager_medium.png",
+  "id": 36,
+  "configuration": {
+    "fields": [
+      {
+        "name": "address",
+        "title": "Hostname",
+        "type": "text",
+        "editable": true,
+        "visible": true,
+        "required": true,
+        "placeholder": "e.g. https://192.168.X.X",
+        "tooltip": "For HTTP you can give value http://192.168.X.X, And for HTTPS you can give value https://192.168.X.X or 192.168.X.X",
+        "description": "IP address or Hostname of the Fortinet FortiManager endpoint server to which you will connect and perform the automated operations."
+      },
+      {
+        "name": "username",
+        "title": "Username",
+        "type": "text",
+        "editable": true,
+        "visible": true,
+        "required": true,
+        "description": "Username to access the Fortinet FortiManager server to which you will connect and perform the automated operations."
+      },
+      {
+        "name": "password",
+        "title": "Password",
+        "type": "password",
+        "editable": true,
+        "visible": true,
+        "required": true,
+        "description": "Password to access the Fortinet FortiManager server to which you will connect and perform the automated operations."
+      },
+      {
+        "name": "adom",
+        "title": "ADOM",
+        "type": "text",
+        "editable": true,
+        "visible": true,
+        "required": false,
+        "tooltip": "Provide Administrative domain name. Eg. root. Notes:- You can specify the ADOM here, as a configuration parameter, or you can also specify the ADOM as a function parameter.",
+        "description": "Administrative domain names (ADOMs) of the Fortinet FortiManager server to which you will connect and perform the automated operations. Enter the ADOMs, in the CSV or List format."
+      },
+      {
+        "name": "port",
+        "title": "Port",
+        "type": "integer",
+        "editable": true,
+        "visible": true,
+        "required": false,
+        "value": 443,
+        "description": "Port number used to access the Fortinet FortiManager server to which you will connect and perform the automated operations. By default, this is set to 443."
+      },
+      {
+        "name": "verify_ssl",
+        "title": "Verify SSL",
+        "type": "checkbox",
+        "editable": true,
+        "visible": true,
+        "required": false,
+        "value": true,
+        "description": "Specifies whether the SSL certificate for the server is to be verified or not. By default, this option is set as True."
+      },
+      {
+        "name": "debug_connection",
+        "title": "Debug Connection",
+        "type": "checkbox",
+        "editable": true,
+        "visible": true,
+        "required": false,
+        "value": false,
+        "description": "Only used with the json_rpc connections, and enables the debug. This can sometimes cause an I/O operation error since debugging involves printing responses, which writes to the integration.log file. "
+      },
+      {
+        "name": "verbose_json",
+        "title": "Verbose JSON",
+        "type": "checkbox",
+        "editable": true,
+        "visible": true,
+        "required": false,
+        "value": true,
+        "description": "Setting this to true adds a verbose flag to the request, so that the integers are translated to the string represntation by Fortimanager."
+      }
+    ]
+  },
+  "operations": [
+    {
+      "operation": "json_rpc_add",
+      "title": "JSON RPC Add",
+      "annotation": "json_rpc_add",
+      "description": "A Generic FMG Add action that lets you specify any valid URL and data object",
+      "category": "investigation",
+      "is_config_required": true,
+      "visible": true,
+      "enabled": true,
+      "parameters": [
+        {
+          "name": "url",
+          "title": "URL",
+          "type": "text",
+          "editable": true,
+          "visible": true,
+          "required": true,
+          "placeholder": "/sys/login/user",
+          "description": "The url you wish to hit"
+        },
+        {
+          "name": "data",
+          "title": "Data",
+          "type": "json",
+          "editable": true,
+          "visible": true,
+          "required": true,
+          "placeholder": {},
+          "description": "Pass a json object for the data you want to send. "
+        }
+      ],
+      "output_schema": {}
+    },
+    {
+      "operation": "json_rpc_set",
+      "title": "JSON RPC Set",
+      "annotation": "json_rpc_set",
+      "description": "A Generic FMG Set action that lets you specify any valid URL and data object",
+      "category": "investigation",
+      "is_config_required": true,
+      "visible": true,
+      "enabled": true,
+      "parameters": [
+        {
+          "name": "url",
+          "title": "URL",
+          "type": "text",
+          "editable": true,
+          "visible": true,
+          "required": true,
+          "placeholder": "/sys/login/user",
+          "description": "The url you wish to hit"
+        },
+        {
+          "name": "data",
+          "title": "Data",
+          "type": "json",
+          "editable": true,
+          "visible": true,
+          "required": true,
+          "placeholder": {},
+          "description": "Pass a json object for the data you want to send. "
+        }
+      ],
+      "output_schema": {}
+    },
+    {
+      "operation": "json_rpc_get",
+      "title": "JSON RPC Get",
+      "annotation": "json_rpc_get",
+      "description": "A Generic FMG Get action that lets you specify any valid URL and data object",
+      "category": "investigation",
+      "is_config_required": true,
+      "visible": true,
+      "enabled": true,
+      "parameters": [
+        {
+          "name": "url",
+          "title": "URL",
+          "type": "text",
+          "editable": true,
+          "visible": true,
+          "required": true,
+          "placeholder": "/sys/login/user",
+          "description": "The url you wish to hit"
+        },
+        {
+          "name": "data",
+          "title": "Data",
+          "type": "json",
+          "editable": true,
+          "visible": true,
+          "required": true,
+          "placeholder": {},
+          "description": "Pass a json object for the data you want to send. "
+        }
+      ],
+      "output_schema": {}
+    },
+    {
+      "operation": "json_rpc_execute",
+      "title": "JSON RPC Exec",
+      "annotation": "json_rpc_execute",
+      "description": "A Generic FMG Execute action that lets you specify any valid URL and data object",
+      "category": "investigation",
+      "is_config_required": true,
+      "visible": true,
+      "enabled": true,
+      "parameters": [
+        {
+          "name": "url",
+          "title": "URL",
+          "type": "text",
+          "editable": true,
+          "visible": true,
+          "required": true,
+          "placeholder": "/sys/login/user",
+          "description": "The url you wish to hit"
+        },
+        {
+          "name": "data",
+          "title": "Data",
+          "type": "json",
+          "editable": true,
+          "visible": true,
+          "required": true,
+          "placeholder": {},
+          "description": "Pass a json object for the data you want to send. "
+        },
+        {
+          "name": "track_task",
+          "title": "Track Task",
+          "type": "checkbox",
+          "editable": true,
+          "visible": true,
+          "required": false,
+          "value": false,
+          "description": "Checking this box will attempt to track a task if found, and wait to return the output until that task is complete"
+        }
+      ],
+      "output_schema": {}
+    },
+    {
+      "operation": "json_rpc_delete",
+      "title": "JSON RPC Delete",
+      "annotation": "json_rpc_delete",
+      "description": "A Generic FMG Delete action that lets you specify any valid URL and data object",
+      "category": "investigation",
+      "is_config_required": true,
+      "visible": true,
+      "enabled": true,
+      "parameters": [
+        {
+          "name": "url",
+          "title": "URL",
+          "type": "text",
+          "editable": true,
+          "visible": true,
+          "required": true,
+          "placeholder": "/sys/login/user",
+          "description": "The url you wish to hit"
+        },
+        {
+          "name": "data",
+          "title": "Data",
+          "type": "json",
+          "editable": true,
+          "visible": true,
+          "required": true,
+          "placeholder": {},
+          "description": "Pass a json object for the data you want to send. "
+        }
+      ],
+      "output_schema": {}
+    }
+  ],
+  "category": "Centralized Security Management",
+  "playbook_collections": [],
+  "icon_small": "data:image/jpeg;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAA3hpVFh0WE1MOmNvbS5hZG9iZS54bXAAAAAAADw/eHBhY2tldCBiZWdpbj0i77u/IiBpZD0iVzVNME1wQ2VoaUh6cmVTek5UY3prYzlkIj8+IDx4OnhtcG1ldGEgeG1sbnM6eD0iYWRvYmU6bnM6bWV0YS8iIHg6eG1wdGs9IkFkb2JlIFhNUCBDb3JlIDUuNi1jMTQ4IDc5LjE2NDAzNiwgMjAxOS8wOC8xMy0wMTowNjo1NyAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wTU09Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9tbS8iIHhtbG5zOnN0UmVmPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvc1R5cGUvUmVzb3VyY2VSZWYjIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtcE1NOk9yaWdpbmFsRG9jdW1lbnRJRD0ieG1wLmRpZDo1MDNhYTZiMy0zYzEzLTQ5YzEtODNiZi00MThjZWIxM2VhNTIiIHhtcE1NOkRvY3VtZW50SUQ9InhtcC5kaWQ6RUM2NjIyRjU0QjIxMTFFQUJDNThGNTk0RjQ0QTg3OUIiIHhtcE1NOkluc3RhbmNlSUQ9InhtcC5paWQ6RUM2NjIyRjQ0QjIxMTFFQUJDNThGNTk0RjQ0QTg3OUIiIHhtcDpDcmVhdG9yVG9vbD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTkgKE1hY2ludG9zaCkiPiA8eG1wTU06RGVyaXZlZEZyb20gc3RSZWY6aW5zdGFuY2VJRD0ieG1wLmlpZDpmZjQzNDBiNy1iMTZjLTRkYzctOTZiZi04ZDBmOTFjMmE4OTEiIHN0UmVmOmRvY3VtZW50SUQ9InhtcC5kaWQ6NTAzYWE2YjMtM2MxMy00OWMxLTgzYmYtNDE4Y2ViMTNlYTUyIi8+IDwvcmRmOkRlc2NyaXB0aW9uPiA8L3JkZjpSREY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+JoiIIAAAA3pJREFUeNrUVl1IU2EY3vnOr24tityPyGZziVtoxrwII4KFYdJNGpWVIV3oRUgXGQX9gNRNECQhdBN00Y9F3RTWVdGNU0ltokPQWUmirbS5nXPyrJ2f9W4zyc08mfPCj3PGvvOe733e932e73sPFovFNGs5kGaNx5oDEOmPuvvfv/f5SJLEVuIoKokOu91dXq4CMBkIePr7Th46RFNUignDMIam4VeIRNKZkyTpSUeH2WAAmOUAZlnWbrWacnKWDLNvcDAqiuUu15JWp90eDIVUMkAYJivKwvTrzMzTjpeiJBEEMTE11e31Qt1KnQ57/lZFUSCPmqoDltzc+SRkOQshdQ7+HHfuPxj2+7Ozs8Msu2tnaU1lZbzc0WiP1wtxZNH0p4nPt1ta/l9FM6HQqZrqGxcvZDGMLCtQfbjANULoSlNTU319kOVWrKJFZoRYnjdu2XKt+VwkEgGmE49jh6sO2PPz33g8OEKrAog7SwimwGL5m2m1AEnaRz58UOLkz2cAd6HNhhDKBABCoii+evtWFCWEsETg8dgbTxhxHM8AAIgP9ldzQ0O6CYAzAEDgBNB7va0N3GEYStZe0cTONzZSJJmRDCSGYa6ePatZTCkcVtGMZIAjHBy1P38BSHAQJTmOxZVaBds7AwDgC4SUazSAlrDfKoJcwHsGZCorMZKIj4o9e9KtYFLUMFQAsmjqTVcXCEmzlJ+B4WFSrUoq5tNHj9xtf+zp7Zuv/uJtjOPozKmTKwNILluYFhUU3Lx86R+bGuy79IqlAmzQascnJjn+B0WRSQ6xRDNb7pyKv4NJijw2Pr67rCy1D6Yr4XVnp29kNL1lqvRkUbRZLAf3uVOKia3776JUDoLBoM/nw3C8yJCzKcRJbISymUeiYmBqymQyRQRhenraYDTq9fqxMb9Wq7PZbH7/KEmQCMdhbXFxcV5e3nIAPT3dra23nC5XU45VpyGwgq0/7z1r+/bxe2gWWNlRWsqxrMVq7X3X69zuhPcfPXoY+PLlWO1xnucGvAMlJSVqXxUIr66u2et2m4dGxNFxkuUVEkHstXV1XZ7Owm2FG/R6iqL6+/orKvYLguAb8tE0I8zNORwOhmaMRqOKimANTdPxVhUR5MB0TIgi82YOERv1ep7nE7sEB53Af6gSTDmOC4fDoFeT2SzLsk6nS+lC619FvwQYAIr8lEStxhncAAAAAElFTkSuQmCC",
+  "icon_large": "data:image/jpeg;base64,iVBORw0KGgoAAAANSUhEUgAAAFAAAABQCAIAAAABc2X6AAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAA3hpVFh0WE1MOmNvbS5hZG9iZS54bXAAAAAAADw/eHBhY2tldCBiZWdpbj0i77u/IiBpZD0iVzVNME1wQ2VoaUh6cmVTek5UY3prYzlkIj8+IDx4OnhtcG1ldGEgeG1sbnM6eD0iYWRvYmU6bnM6bWV0YS8iIHg6eG1wdGs9IkFkb2JlIFhNUCBDb3JlIDUuNi1jMTQ4IDc5LjE2NDAzNiwgMjAxOS8wOC8xMy0wMTowNjo1NyAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wTU09Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9tbS8iIHhtbG5zOnN0UmVmPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvc1R5cGUvUmVzb3VyY2VSZWYjIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtcE1NOk9yaWdpbmFsRG9jdW1lbnRJRD0ieG1wLmRpZDo1MDNhYTZiMy0zYzEzLTQ5YzEtODNiZi00MThjZWIxM2VhNTIiIHhtcE1NOkRvY3VtZW50SUQ9InhtcC5kaWQ6RUM2NjIyRjE0QjIxMTFFQUJDNThGNTk0RjQ0QTg3OUIiIHhtcE1NOkluc3RhbmNlSUQ9InhtcC5paWQ6RUM2NjIyRjA0QjIxMTFFQUJDNThGNTk0RjQ0QTg3OUIiIHhtcDpDcmVhdG9yVG9vbD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTkgKE1hY2ludG9zaCkiPiA8eG1wTU06RGVyaXZlZEZyb20gc3RSZWY6aW5zdGFuY2VJRD0ieG1wLmlpZDpmZjQzNDBiNy1iMTZjLTRkYzctOTZiZi04ZDBmOTFjMmE4OTEiIHN0UmVmOmRvY3VtZW50SUQ9InhtcC5kaWQ6NTAzYWE2YjMtM2MxMy00OWMxLTgzYmYtNDE4Y2ViMTNlYTUy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\u003d",
+  "help_online": "https://docs.fortinet.com/document/fortisoar/3.0.0/fortinet-fortimanager/233/fortinet-fortimanager-v3-0-0",
+  "cs_approved": false,
+  "tags": []
+}
