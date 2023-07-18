@@ -1,56 +1,10 @@
 #### What's Improved
-- Added the following new operations and playbooks:
-    - Get Device Groups List
-    - Create Address
-    - Get Addresses List
-    - Update Address
-    - Delete Address
-    - Create Address Group
-    - Get Address Groups List
-    - Update Address Group
-    - Delete Address Group
-    - Get Service Categories List
-    - Create Service Group
-    - Get Service Groups List
-    - Update Service Group
-    - Delete Service Group
-    - Create Custom Service
-    - Get Custom Services List
-    - Update Custom Service
-    - Delete Custom Service
-    - Create Policy Package
-    - Update Policy Package
-    - Delete Policy Package
-    - Create Firewall Policy
-    - Update Firewall Policy
-    - Delete Firewall Policy
-    - Move Firewall Policy
-    - Get Dynamic Interface List
-    - Install Policy
-    - Get Installation Policy Package Status
-    - Create LDAP Server
-    - Get LDAP Server List
-    - Update LDAP Server
-    - Delete LDAP Server
-    - Create User Group
-    - Get User Groups List
-    - Update User Group
-    - Delete User Group
-    - Get SSL VPN Settings
-    - Update SSL VPN Settings
-    - Get Web Filter List
-    - Get Blocked URLs
-    - Block URL
-    - Unblock URL
-    - Get Applications Detail
-    - Get Applications Control List
-    - Get Blocked Applications
-    - Block Application
-    - Unblock Application
 
-#### What's Fixed
-- Updated the names of the following operations and playbooks:
-    - List ADOM IPv4 Policy updated to List ADOM Firewall Policies
-    - List Global IPv4 Policy updated to List Global Firewall Policies
-    
-- Renamed the 'IPv4' configuration parameter to 'Firewall' across all the operations.
+* Added the following new operations:
+  * json_rpc_add
+  * json_rpc_set
+  * json_rpc_get
+  * json_rpc_execute
+  * json_rpc_delete
+
+This connector  puts the onus on the user to understand the FMG API that can be found in the [FNDN FortiAPI](https://fndn.fortinet.net/index.php?/fortiapi/5-fortimanager/) to use. To use the connector that simplify actions please see the original [Fortinet Fortimanager Connector](https://fortisoar.contenthub.fortinet.com//list.html?contentType=connector&searchContent=Fortinet%20FortiManager).
