@@ -2,7 +2,7 @@
   "name": "fortinet_fortimanager_json_rpc",
   "version": "1.0.0",
   "label": "Fortinet FortiManager JSON RPC",
-  "description": "The Fortinet FortiManager JSON RPC Connector is a more advanced connector which provides freeform actions to use the json rpc api directly.",
+  "description": "The Fortinet FortiManager JSON RPC Connector is an advanced connector with freeform actions to use the JSON-RPC API directly",
   "publisher": "",
   "icon_small_name": "FortiManager_small.png",
   "icon_large_name": "FortiManager_medium.png",
@@ -27,7 +27,7 @@
         "editable": true,
         "visible": true,
         "required": true,
-        "description": "Username to access the Fortinet FortiManager server to which you will connect and perform the automated operations."
+        "description": "Username with JSON-RPC enabled to access the Fortinet FortiManager server to which you will connect and perform the automated operations."
       },
       {
         "name": "password",
