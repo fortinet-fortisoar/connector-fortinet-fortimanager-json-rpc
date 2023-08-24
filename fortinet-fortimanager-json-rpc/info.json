@@ -276,7 +276,7 @@
           "editable": true,
           "visible": true,
           "required": true,
-          "placeholder": "get",
+          "placeholder": "",
           "description": "The method you want to send with the json rpc request",
           "options": ["get", "add", "update", "set", "delete","replace","clone", "execute", "move", "unset" ]
         },
