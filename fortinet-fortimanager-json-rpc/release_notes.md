@@ -1,5 +1,10 @@
 #### What's Improved
 
+#### Release 1.0.1
+* Added the following new operations:
+  * JSON RPC Freeform
+
+#### Release 1.0.0
 * Added the following new operations:
   * JSON RPC Add
   * JSON RPC Set

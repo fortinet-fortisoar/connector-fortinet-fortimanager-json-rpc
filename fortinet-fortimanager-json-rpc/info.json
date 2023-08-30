@@ -5,9 +5,9 @@
   "publisher": "Fortinet CSE",
   "cs_approved": false,
   "cs_compatible": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "category": "Centralized Security Management",
-  "help_online": "https://github.com/fortinet-fortisoar/connector-fortinet-fortimanager-json-rpc/blob/release/1.0.0/docs/FortinetFortimanagerJsonRpcConnectorDoc.md",
+  "help_online": "https://github.com/fortinet-fortisoar/connector-fortinet-fortimanager-json-rpc/blob/release/1.0.1/docs/FortinetFortimanagerJsonRpcConnectorDoc.md",
   "icon_small_name": "FortiManager_small.png",
   "icon_large_name": "FortiManager_medium.png",
   "configuration": {
@@ -254,6 +254,41 @@
           "visible": true,
           "required": true,
           "placeholder": {},
+          "description": "Pass a json object for the data you want to send. "
+        }
+      ],
+      "output_schema": {}
+    },
+    {
+      "operation": "json_rpc_freeform",
+      "title": "JSON RPC Freeform",
+      "annotation": "json_rpc_freeform",
+      "description": "A Generic FMG freeform action that lets you specify a list of dictionaries of URLs and data objects",
+      "category": "investigation",
+      "is_config_required": true,
+      "visible": true,
+      "enabled": true,
+      "parameters": [
+        {
+          "name": "method",
+          "title": "Method",
+          "type": "select",
+          "editable": true,
+          "visible": true,
+          "required": true,
+          "placeholder": "",
+          "description": "The method you want to send with the json rpc request",
+          "options": ["get", "add", "update", "set", "delete","replace","clone", "execute", "move", "unset" ]
+        },
+        {
+          "name": "data",
+          "title": "Data",
+          "type": "json",
+          "editable": true,
+          "visible": true,
+          "required": true,
+          "default": [{"url": "/pm/config/adom/root/pkg/default/firewall/policy/1", "fields": ["policyid", "name"]},
+            {"url": "/pm/config/adom/root/pkg/default/firewall/policy/2", "fields": ["policyid", "name"]}],
           "description": "Pass a json object for the data you want to send. "
         }
       ],

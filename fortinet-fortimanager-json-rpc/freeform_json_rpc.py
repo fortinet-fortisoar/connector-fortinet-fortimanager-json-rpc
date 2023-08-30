@@ -10,7 +10,7 @@ from typing import Union
 from connectors.core.connector import get_logger, ConnectorError
 from pyFMG.fortimgr import FortiManager
 
-logger = get_logger('fortinet-fortimanager')
+logger = get_logger('fortinet-fortimanager-json-rpc')
 
 
 def _get_config(config):
@@ -139,3 +139,20 @@ def _json_rpc_delete(config: dict, params: dict) -> dict:
         raise ConnectorError(e)
     finally:
         fmg_session.logout()
+
+
+def _json_rpc_freeform(config: dict, params: dict) -> dict:
+    try:
+        fmg_session = create_fmg_session(config)
+        fmg_session.login()
+        freeform_call = getattr(fmg_session, 'free_form')
+        method = params.get("method")
+        data = parse_data(params.get("data", {}))
+        status, freeform_response = freeform_call(method, **data)
+        logger.debug(freeform_response)
+        return {"status": status, "freeform_response": freeform_response}
+    except Exception as e:
+        raise ConnectorError(e)
+    finally:
+        fmg_session.logout()
+

@@ -5,7 +5,7 @@
   Copyright end """
 
 from connectors.core.connector import get_logger, ConnectorError
-from .freeform_json_rpc import _json_rpc_add, _json_rpc_set, _json_rpc_get, _json_rpc_execute, _json_rpc_delete
+from .freeform_json_rpc import _json_rpc_add, _json_rpc_set, _json_rpc_get, _json_rpc_execute, _json_rpc_delete, _json_rpc_freeform
 
 logger = get_logger('fortinet-fortimanager-json-rpc')
 
@@ -59,6 +59,12 @@ def json_rpc_delete(config, params):
     except Exception as e:
         raise ConnectorError(str(e))
 
+def json_rpc_freeform(config, params):
+    try:
+        response = _json_rpc_freeform(config, params)
+        return response
+    except Exception as e:
+        raise ConnectorError(str(e))
 
 operations = {
     'json_rpc_add': json_rpc_add,
@@ -66,4 +72,5 @@ operations = {
     'json_rpc_get': json_rpc_get,
     'json_rpc_execute': json_rpc_execute,
     'json_rpc_delete': json_rpc_delete,
+    'json_rpc_freeform': json_rpc_freeform
 }
