@@ -59,12 +59,14 @@ def json_rpc_delete(config, params):
     except Exception as e:
         raise ConnectorError(str(e))
 
+
 def json_rpc_freeform(config, params):
     try:
         response = _json_rpc_freeform(config, params)
         return response
     except Exception as e:
         raise ConnectorError(str(e))
+
 
 operations = {
     'json_rpc_add': json_rpc_add,

@@ -1,29 +1,23 @@
 ## About the connector
-The Fortinet FortiManager JSON RPC Connector is an advanced connector with freeform actions to use the JSON-RPC API directly. This connector puts the onus on the user to understand the FortiManager API. To use the connector that simplify actions please see the original Fortinet FortiManager Connector.
+The Fortinet FortiManager JSON RPC Connector is an advanced connector with freeform actions to use the JSON-RPC API directly. This connector puts the onus on the user to understand the FortiManager API. To use the connector that simplify actions please see the original Fortinet FortiManager Connector
 <p>This document provides information about the Fortinet FortiManager JSON RPC Connector, which facilitates automated interactions, with a Fortinet FortiManager JSON RPC server using FortiSOAR&trade; playbooks. Add the Fortinet FortiManager JSON RPC Connector as a step in FortiSOAR&trade; playbooks and perform automated operations with Fortinet FortiManager JSON RPC.</p>
 ### Version information
 
-Connector Version: 1.0.0
+Connector Version: 1.0.1
 
 
 Authored By: Fortinet CSE
 
 Certified: No
-## Release Notes for version 1.0.0
-Following enhancements have been made to the Fortinet FortiManager JSON RPC Connector in version 1.0.0:
+## Release Notes for version 1.0.1
+Following enhancements have been made to the Fortinet FortiManager JSON RPC Connector in version 1.0.1:
 <ul>
 <li><p>Added the following new operations:</p>
 
 <ul>
-<li>JSON RPC Add</li>
-<li>JSON RPC Set</li>
-<li>JSON RPC Get</li>
-<li>JSON RPC Exec</li>
-<li>JSON RPC Delete</li>
+<li>JSON RPC Freeform</li>
 </ul></li>
 </ul>
-
-<p>This connector puts the onus on the user to understand the FMG API that can be found in the <a href="https://fndn.fortinet.net/index.php?/fortiapi/5-fortimanager/">FNDN FortiAPI</a> to use. To use the connector that simplify actions please see the original <a href="https://fortisoar.contenthub.fortinet.com//list.html?contentType=connector&searchContent=Fortinet%20FortiManager">Fortinet Fortimanager Connector</a>.</p>
 ## Installing the connector
 <p>Use the <strong>Content Hub</strong> to install the connector. For the detailed procedure to install a connector, click <a href="https://docs.fortinet.com/document/fortisoar/0.0.0/installing-a-connector/1/installing-a-connector" target="_top">here</a>.</p><p>You can also use the <code>yum</code> command as a root user to install the connector:</p>
 <pre>yum install cyops-connector-fortinet-fortimanager-json-rpc</pre>
@@ -60,6 +54,7 @@ The following automated operations can be included in playbooks and you can also
 <tr><td>JSON RPC Get</td><td>A Generic FMG Get action that lets you specify any valid URL and data object</td><td>json_rpc_get <br/>Investigation</td></tr>
 <tr><td>JSON RPC Exec</td><td>A Generic FMG Execute action that lets you specify any valid URL and data object</td><td>json_rpc_execute <br/>Investigation</td></tr>
 <tr><td>JSON RPC Delete</td><td>A Generic FMG Delete action that lets you specify any valid URL and data object</td><td>json_rpc_delete <br/>Investigation</td></tr>
+<tr><td>JSON RPC Freeform</td><td>A Generic FMG freeform action that lets you specify a list of dictionaries of URLs and data objects</td><td>json_rpc_freeform <br/>Investigation</td></tr>
 </tbody></table>
 ### operation: JSON RPC Add
 #### Input parameters
@@ -102,12 +97,21 @@ The following automated operations can be included in playbooks and you can also
 #### Output
 
  The output contains a non-dictionary value.
+### operation: JSON RPC Freeform
+#### Input parameters
+<table border=1><thead><tr><th>Parameter</th><th>Description</th></tr></thead><tbody><tr><td>Method</td><td>The method you want to send with the json rpc request
+</td></tr><tr><td>Data</td><td>Pass a json object for the data you want to send. 
+</td></tr></tbody></table>
+#### Output
+
+ The output contains a non-dictionary value.
 ## Included playbooks
-The `Sample - fortinet-fortimanager-json-rpc - 1.0.0` playbook collection comes bundled with the Fortinet FortiManager JSON RPC connector. These playbooks contain steps using which you can perform all supported actions. You can see bundled playbooks in the **Automation** > **Playbooks** section in FortiSOAR&trade; after importing the Fortinet FortiManager JSON RPC connector.
+The `Sample - fortinet-fortimanager-json-rpc - 1.0.1` playbook collection comes bundled with the Fortinet FortiManager JSON RPC connector. These playbooks contain steps using which you can perform all supported actions. You can see bundled playbooks in the **Automation** > **Playbooks** section in FortiSOAR&trade; after importing the Fortinet FortiManager JSON RPC connector.
 
 - JSON RPC Add
 - JSON RPC Delete
 - JSON RPC Exec
+- JSON RPC Freeform
 - JSON RPC Get
 - JSON RPC Set
 
