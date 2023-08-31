@@ -7,7 +7,7 @@
 from connectors.core.connector import Connector, get_logger, ConnectorError
 from .operations import _check_health, operations
 
-logger = get_logger('fortinet-fortimanager')
+logger = get_logger('fortinet-fortimanager-json-rpc')
 
 
 class FortiManager(Connector):
