@@ -1,14 +1,23 @@
 ## About the connector
 The Fortinet FortiManager JSON RPC Connector is an advanced connector with freeform actions to use the JSON-RPC API directly. This connector puts the onus on the user to understand the FortiManager API. To use the connector that simplify actions please see the original Fortinet FortiManager Connector
 <p>This document provides information about the Fortinet FortiManager JSON RPC Connector, which facilitates automated interactions, with a Fortinet FortiManager JSON RPC server using FortiSOAR&trade; playbooks. Add the Fortinet FortiManager JSON RPC Connector as a step in FortiSOAR&trade; playbooks and perform automated operations with Fortinet FortiManager JSON RPC.</p>
+
 ### Version information
 
-Connector Version: 1.0.1
+Connector Version: 1.0.2
 
 
 Authored By: Fortinet CSE
 
 Certified: No
+
+## Release Notes for version 1.0.2
+Following enhancements have been made to the Fortinet FortiManager JSON RPC Connector in version 1.0.2:
+<ul>
+<li><p>Added support for FortiManager Cloud Authentication</p>
+</li>
+</ul>
+
 ## Release Notes for version 1.0.1
 Following enhancements have been made to the Fortinet FortiManager JSON RPC Connector in version 1.0.1:
 <ul>
@@ -18,6 +27,7 @@ Following enhancements have been made to the Fortinet FortiManager JSON RPC Conn
 <li>JSON RPC Freeform</li>
 </ul></li>
 </ul>
+
 ## Installing the connector
 <p>Use the <strong>Content Hub</strong> to install the connector. For the detailed procedure to install a connector, click <a href="https://docs.fortinet.com/document/fortisoar/0.0.0/installing-a-connector/1/installing-a-connector" target="_top">here</a>.</p><p>You can also use the <code>yum</code> command as a root user to install the connector:</p>
 <pre>yum install cyops-connector-fortinet-fortimanager-json-rpc</pre>
@@ -31,6 +41,7 @@ Following enhancements have been made to the Fortinet FortiManager JSON RPC Conn
 
 ## Configuring the connector
 For the procedure to configure a connector, click [here](https://docs.fortinet.com/document/fortisoar/0.0.0/configuring-a-connector/1/configuring-a-connector)
+
 ### Configuration parameters
 <p>In FortiSOAR&trade;, on the Connectors page, click the <strong>Fortinet FortiManager JSON RPC</strong> connector row (if you are in the <strong>Grid</strong> view on the Connectors page) and in the <strong>Configurations</strong> tab enter the required configuration details:</p>
 <table border=1><thead><tr><th>Parameter</th><th>Description</th></tr></thead><tbody><tr><td>Hostname</td><td>IP address or Hostname of the Fortinet FortiManager endpoint server to which you will connect and perform the automated operations.
