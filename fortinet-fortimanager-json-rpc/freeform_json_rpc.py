@@ -19,7 +19,7 @@ def _get_config(config):
     username = config.get("username")
     password = config.get("password")
     verify_ssl = config.get("verify_ssl", None)
-    if port:
+    if port and port not in ["443", 443]:
         server_url = '{0}:{1}'.format(server_url, port)
     if server_url[:7] != 'http://' and server_url[:8] != 'https://':
         server_url = 'https://{}'.format(str(server_url))
