@@ -18,16 +18,6 @@ Following enhancements have been made to the Fortinet FortiManager JSON RPC Conn
 </li>
 </ul>
 
-## Release Notes for version 1.0.1
-Following enhancements have been made to the Fortinet FortiManager JSON RPC Connector in version 1.0.1:
-<ul>
-<li><p>Added the following new operations:</p>
-
-<ul>
-<li>JSON RPC Freeform</li>
-</ul></li>
-</ul>
-
 ## Installing the connector
 <p>Use the <strong>Content Hub</strong> to install the connector. For the detailed procedure to install a connector, click <a href="https://docs.fortinet.com/document/fortisoar/0.0.0/installing-a-connector/1/installing-a-connector" target="_top">here</a>.</p><p>You can also use the <code>yum</code> command as a root user to install the connector:</p>
 <pre>yum install cyops-connector-fortinet-fortimanager-json-rpc</pre>
@@ -58,6 +48,7 @@ For the procedure to configure a connector, click [here](https://docs.fortinet.c
 </tr><tr><td>Verbose JSON</td><td>Setting this to true adds a verbose flag to the request, so that the integers are translated to the string represntation by Fortimanager.
 </td>
 </tr></tbody></table>
+
 ## Actions supported by the connector
 The following automated operations can be included in playbooks and you can also use the annotations to access operations from FortiSOAR&trade; release 4.10.0 and onwards:
 <table border=1><thead><tr><th>Function</th><th>Description</th><th>Annotation and Category</th></tr></thead><tbody><tr><td>JSON RPC Add</td><td>A Generic FMG Add action that lets you specify any valid URL and data object</td><td>json_rpc_add <br/>Investigation</td></tr>
@@ -67,11 +58,13 @@ The following automated operations can be included in playbooks and you can also
 <tr><td>JSON RPC Delete</td><td>A Generic FMG Delete action that lets you specify any valid URL and data object</td><td>json_rpc_delete <br/>Investigation</td></tr>
 <tr><td>JSON RPC Freeform</td><td>A Generic FMG freeform action that lets you specify a list of dictionaries of URLs and data objects</td><td>json_rpc_freeform <br/>Investigation</td></tr>
 </tbody></table>
+
 ### operation: JSON RPC Add
 #### Input parameters
 <table border=1><thead><tr><th>Parameter</th><th>Description</th></tr></thead><tbody><tr><td>URL</td><td>The url you wish to hit
 </td></tr><tr><td>Data</td><td>Pass a json object for the data you want to send. 
 </td></tr></tbody></table>
+
 #### Output
 
  The output contains a non-dictionary value.
@@ -80,6 +73,7 @@ The following automated operations can be included in playbooks and you can also
 <table border=1><thead><tr><th>Parameter</th><th>Description</th></tr></thead><tbody><tr><td>URL</td><td>The url you wish to hit
 </td></tr><tr><td>Data</td><td>Pass a json object for the data you want to send. 
 </td></tr></tbody></table>
+
 #### Output
 
  The output contains a non-dictionary value.
@@ -88,6 +82,7 @@ The following automated operations can be included in playbooks and you can also
 <table border=1><thead><tr><th>Parameter</th><th>Description</th></tr></thead><tbody><tr><td>URL</td><td>The url you wish to hit
 </td></tr><tr><td>Data</td><td>Pass a json object for the data you want to send. 
 </td></tr></tbody></table>
+
 #### Output
 
  The output contains a non-dictionary value.
@@ -97,6 +92,7 @@ The following automated operations can be included in playbooks and you can also
 </td></tr><tr><td>Data</td><td>Pass a json object for the data you want to send. 
 </td></tr><tr><td>Track Task</td><td>Checking this box will attempt to track a task if found, and wait to return the output until that task is complete
 </td></tr></tbody></table>
+
 #### Output
 
  The output contains a non-dictionary value.
@@ -105,6 +101,7 @@ The following automated operations can be included in playbooks and you can also
 <table border=1><thead><tr><th>Parameter</th><th>Description</th></tr></thead><tbody><tr><td>URL</td><td>The url you wish to hit
 </td></tr><tr><td>Data</td><td>Pass a json object for the data you want to send. 
 </td></tr></tbody></table>
+
 #### Output
 
  The output contains a non-dictionary value.
@@ -113,11 +110,12 @@ The following automated operations can be included in playbooks and you can also
 <table border=1><thead><tr><th>Parameter</th><th>Description</th></tr></thead><tbody><tr><td>Method</td><td>The method you want to send with the json rpc request
 </td></tr><tr><td>Data</td><td>Pass a json object for the data you want to send. 
 </td></tr></tbody></table>
+
 #### Output
 
  The output contains a non-dictionary value.
 ## Included playbooks
-The `Sample - fortinet-fortimanager-json-rpc - 1.0.1` playbook collection comes bundled with the Fortinet FortiManager JSON RPC connector. These playbooks contain steps using which you can perform all supported actions. You can see bundled playbooks in the **Automation** > **Playbooks** section in FortiSOAR&trade; after importing the Fortinet FortiManager JSON RPC connector.
+The `Sample - fortinet-fortimanager-json-rpc - 1.0.2` playbook collection comes bundled with the Fortinet FortiManager JSON RPC connector. These playbooks contain steps using which you can perform all supported actions. You can see bundled playbooks in the **Automation** > **Playbooks** section in FortiSOAR&trade; after importing the Fortinet FortiManager JSON RPC connector.
 
 - JSON RPC Add
 - JSON RPC Delete
