@@ -45,7 +45,7 @@ For the procedure to configure a connector, click [here](https://docs.fortinet.c
 </tr><tr><td>Verify SSL</td><td>Specifies whether the SSL certificate for the server is to be verified or not. <br/>By default, this option is set to True.</td></tr>
 <tr><td>Debug Connection</td><td>Only used with the json_rpc connections, and enables the debug. This can sometimes cause an I/O operation error since debugging involves printing responses, which writes to the integration.log file. 
 </td>
-</tr><tr><td>Verbose JSON</td><td>Setting this to true adds a verbose flag to the request, so that the integers are translated to the string represntation by Fortimanager.
+</tr><tr><td>Verbose JSON</td><td>Setting this to true adds a verbose flag to the request, so that the integers are translated to the string representation by Fortimanager.
 </td>
 </tr></tbody></table>
 

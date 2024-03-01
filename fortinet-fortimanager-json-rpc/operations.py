@@ -5,64 +5,70 @@
   Copyright end """
 
 from connectors.core.connector import get_logger, ConnectorError
-from .freeform_json_rpc import _json_rpc_add, _json_rpc_set, _json_rpc_get, _json_rpc_execute, _json_rpc_delete, _json_rpc_freeform
+from .generic_json_rpc import perform_rpc_action
 
 logger = get_logger('fortinet-fortimanager-json-rpc')
 
 
-def _check_health(config):
+def _check_health(config: dict) -> bool:
     params = {"url": "/sys/status", "data": {}}
     try:
-        response = _json_rpc_get(config, params)
+        response = perform_rpc_action("get", config, params)
         if response['get_response']:
             return True
     except Exception as e:
         raise ConnectorError(str(e) + " - Unable to get system status")
 
 
-def json_rpc_add(config, params):
+def json_rpc_add(config: dict, params: dict) -> dict:
+    action = "add"
     try:
-        response = _json_rpc_add(config, params)
+        response = perform_rpc_action(action, config, params)
         return response
     except Exception as e:
         raise ConnectorError(str(e))
 
 
-def json_rpc_set(config, params):
+def json_rpc_set(config: dict, params: dict) -> dict:
+    action = "set"
     try:
-        response = _json_rpc_set(config, params)
+        response = perform_rpc_action(action, config, params)
         return response
     except Exception as e:
         raise ConnectorError(str(e))
 
 
-def json_rpc_get(config, params):
+def json_rpc_get(config: dict, params: dict) -> dict:
+    action = "get"
     try:
-        response = _json_rpc_get(config, params)
+        response = perform_rpc_action(action, config, params)
         return response
     except Exception as e:
         raise ConnectorError(str(e))
 
 
-def json_rpc_execute(config, params):
+def json_rpc_execute(config: dict, params: dict) -> dict:
+    action = "execute"
     try:
-        response = _json_rpc_execute(config, params)
+        response = perform_rpc_action(action, config, params)
         return response
     except Exception as e:
         raise ConnectorError(str(e))
 
 
-def json_rpc_delete(config, params):
+def json_rpc_delete(config: dict, params: dict) -> dict:
+    action = "delete"
     try:
-        response = _json_rpc_delete(config, params)
+        response = perform_rpc_action(action, config, params)
         return response
     except Exception as e:
         raise ConnectorError(str(e))
 
 
-def json_rpc_freeform(config, params):
+def json_rpc_freeform(config: dict, params: dict) -> dict:
+    action = "freeform"
     try:
-        response = _json_rpc_freeform(config, params)
+        response = perform_rpc_action(action, config, params)
         return response
     except Exception as e:
         raise ConnectorError(str(e))

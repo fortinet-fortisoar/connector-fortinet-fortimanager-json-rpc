@@ -4,7 +4,7 @@
     {
       "uuid": "c11d3444-7674-4d31-ba69-eae27af4c7f6",
       "@type": "WorkflowCollection",
-      "name": "Sample - Fortinet FortiManager JSON RPC - 1.0.2",
+      "name": "Sample - Fortinet FortiManager JSON RPC - 1.0.3",
       "description": "The Fortinet FortiManager JSON RPC Connector is an advanced connector with freeform actions to use the JSON-RPC API directly. This connector puts the onus on the user to understand the FortiManager API. To use the connector that simplify actions please see the original Fortinet FortiManager Connector",
       "visible": true,
       "image": null,
@@ -68,7 +68,7 @@
                 "name": "Fortinet FortiManager JSON RPC",
                 "config": "''",
                 "params": [],
-                "version": "1.0.2",
+                "version": "1.0.3",
                 "connector": "fortinet-fortimanager-json-rpc",
                 "operation": "json_rpc_add",
                 "operationTitle": "JSON RPC Add"
@@ -145,7 +145,7 @@
                 "name": "Fortinet FortiManager JSON RPC",
                 "config": "''",
                 "params": [],
-                "version": "1.0.2",
+                "version": "1.0.3",
                 "connector": "fortinet-fortimanager-json-rpc",
                 "operation": "json_rpc_set",
                 "operationTitle": "JSON RPC Set"
@@ -222,7 +222,7 @@
                 "name": "Fortinet FortiManager JSON RPC",
                 "config": "''",
                 "params": [],
-                "version": "1.0.2",
+                "version": "1.0.3",
                 "connector": "fortinet-fortimanager-json-rpc",
                 "operation": "json_rpc_get",
                 "operationTitle": "JSON RPC Get"
@@ -301,7 +301,7 @@
                 "params": {
                   "track_task": false
                 },
-                "version": "1.0.2",
+                "version": "1.0.3",
                 "connector": "fortinet-fortimanager-json-rpc",
                 "operation": "json_rpc_execute",
                 "operationTitle": "JSON RPC Exec"
@@ -378,7 +378,7 @@
                 "name": "Fortinet FortiManager JSON RPC",
                 "config": "''",
                 "params": [],
-                "version": "1.0.2",
+                "version": "1.0.3",
                 "connector": "fortinet-fortimanager-json-rpc",
                 "operation": "json_rpc_delete",
                 "operationTitle": "JSON RPC Delete"
@@ -455,7 +455,7 @@
                 "name": "Fortinet FortiManager JSON RPC",
                 "config": "''",
                 "params": [],
-                "version": "1.0.2",
+                "version": "1.0.3",
                 "connector": "fortinet-fortimanager-json-rpc",
                 "operation": "json_rpc_freeform",
                 "operationTitle": "JSON RPC Freeform"
