@@ -7,7 +7,7 @@
   "cs_approved": false,
   "cs_compatible": true,
   "category": "Centralized Security Management",
-  "help_online": "https://github.com/fortinet-fortisoar/connector-fortinet-fortimanager-json-rpc/blob/release/1.0.2/docs/FortinetFortimanagerJsonRpcConnectorDoc.md",
+  "help_online": "https://github.com/fortinet-fortisoar/connector-fortinet-fortimanager-json-rpc/blob/release/1.0.3/docs/FortinetFortimanagerJsonRpcConnectorDoc.md",
   "icon_small_name": "FortiManager_small.png",
   "icon_large_name": "FortiManager_medium.png",
   "configuration": {

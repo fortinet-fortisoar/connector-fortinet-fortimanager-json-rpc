@@ -4,18 +4,18 @@ The Fortinet FortiManager JSON RPC Connector is an advanced connector with freef
 
 ### Version information
 
-Connector Version: 1.0.2
+Connector Version: 1.0.3
 
 
 Authored By: Fortinet CSE
 
 Certified: No
-
-## Release Notes for version 1.0.2
-Following enhancements have been made to the Fortinet FortiManager JSON RPC Connector in version 1.0.2:
+## Release Notes for version 1.0.3
+Following enhancements have been made to the Fortinet FortiManager JSON RPC Connector in version 1.0.3:
 <ul>
-<li><p>Added support for FortiManager Cloud Authentication</p>
-</li>
+<li>Implement support for auto locking of FortiManager Adoms if workspaces are enabled.</li>
+
+<li>Made the "payload" parameter optional for the get action.</li>
 </ul>
 
 ## Installing the connector
@@ -31,7 +31,6 @@ Following enhancements have been made to the Fortinet FortiManager JSON RPC Conn
 
 ## Configuring the connector
 For the procedure to configure a connector, click [here](https://docs.fortinet.com/document/fortisoar/0.0.0/configuring-a-connector/1/configuring-a-connector)
-
 ### Configuration parameters
 <p>In FortiSOAR&trade;, on the Connectors page, click the <strong>Fortinet FortiManager JSON RPC</strong> connector row (if you are in the <strong>Grid</strong> view on the Connectors page) and in the <strong>Configurations</strong> tab enter the required configuration details:</p>
 <table border=1><thead><tr><th>Parameter</th><th>Description</th></tr></thead><tbody><tr><td>Hostname</td><td>IP address or Hostname of the Fortinet FortiManager endpoint server to which you will connect and perform the automated operations.
@@ -45,7 +44,7 @@ For the procedure to configure a connector, click [here](https://docs.fortinet.c
 </tr><tr><td>Verify SSL</td><td>Specifies whether the SSL certificate for the server is to be verified or not. <br/>By default, this option is set to True.</td></tr>
 <tr><td>Debug Connection</td><td>Only used with the json_rpc connections, and enables the debug. This can sometimes cause an I/O operation error since debugging involves printing responses, which writes to the integration.log file. 
 </td>
-</tr><tr><td>Verbose JSON</td><td>Setting this to true adds a verbose flag to the request, so that the integers are translated to the string representation by Fortimanager.
+</tr><tr><td>Verbose JSON</td><td>Setting this to true adds a verbose flag to the request, so that the integers are translated to the string representation by FortiManager.
 </td>
 </tr></tbody></table>
 
@@ -115,7 +114,7 @@ The following automated operations can be included in playbooks and you can also
 
  The output contains a non-dictionary value.
 ## Included playbooks
-The `Sample - fortinet-fortimanager-json-rpc - 1.0.2` playbook collection comes bundled with the Fortinet FortiManager JSON RPC connector. These playbooks contain steps using which you can perform all supported actions. You can see bundled playbooks in the **Automation** > **Playbooks** section in FortiSOAR&trade; after importing the Fortinet FortiManager JSON RPC connector.
+The `Sample - fortinet-fortimanager-json-rpc - 1.0.3` playbook collection comes bundled with the Fortinet FortiManager JSON RPC connector. These playbooks contain steps using which you can perform all supported actions. You can see bundled playbooks in the **Automation** > **Playbooks** section in FortiSOAR&trade; after importing the Fortinet FortiManager JSON RPC connector.
 
 - JSON RPC Add
 - JSON RPC Delete
