@@ -4,7 +4,7 @@ The Fortinet FortiManager JSON RPC Connector is an advanced connector with freef
 
 ### Version information
 
-Connector Version: 1.0.5
+Connector Version: 1.0.6
 
 Authored By: Fortinet CSE
 
@@ -12,13 +12,17 @@ Contributors: Dylan Spille
 
 Certified: No
 
-## Release Notes for version 1.0.5
-Following enhancements have been made to the Fortinet FortiManager JSON RPC Connector in version 1.0.5:
+## Release Notes for version 1.0.6
+Following enhancements have been made to the Fortinet FortiManager JSON RPC Connector in version 1.0.6:
 
 <ul>
-<li>Fixed small bug with freeform action with the execute method selected</li>
-<li>Fixed small bug with algorithm to parse the adom from the playbook parameters which resulted in the incorrect adom being locked for workspace mode scenarios</li>
-<li>Enhanced logging for workspace locking scenarios</li>
+<li>Support for authenticating to FMG with an API Key</li>
+<li>Support for new pyFMG track task parameters</li>
+<li><p>New implicit handling for special case operations in FMG that always require more than one API call to complete an action</p>
+
+<ul>
+<li>This is like a smart handling function to do what would naturally come next. If users requests for A, the connector will also ask for B once A is complete</li>
+</ul></li>
 </ul>
 
 ## Installing the connector
@@ -34,14 +38,13 @@ Following enhancements have been made to the Fortinet FortiManager JSON RPC Conn
 
 ## Configuring the connector
 For the procedure to configure a connector, click [here](https://docs.fortinet.com/document/fortisoar/0.0.0/configuring-a-connector/1/configuring-a-connector)
+
 ### Configuration parameters
 <p>In FortiSOAR&trade;, on the Connectors page, click the <strong>Fortinet FortiManager JSON RPC</strong> connector row (if you are in the <strong>Grid</strong> view on the Connectors page) and in the <strong>Configurations</strong> tab enter the required configuration details:</p>
 <table border=1><thead><tr><th>Parameter</th><th>Description</th></tr></thead><tbody><tr><td>Hostname</td><td>IP address or Hostname of the Fortinet FortiManager endpoint server to which you will connect and perform the automated operations.
 </td>
-</tr><tr><td>Username</td><td>Username with JSON-RPC enabled to access the Fortinet FortiManager server to which you will connect and perform the automated operations.
-</td>
-</tr><tr><td>Password</td><td>Password to access the Fortinet FortiManager server to which you will connect and perform the automated operations.
-</td>
+</tr><tr><td>Authentication Method</td><td>
+<br><strong>If you choose 'Username/Password'</strong><ul><li>Username: Username with JSON-RPC enabled to access the Fortinet FortiManager server to which you will connect and perform the automated operations.</li><li>Password: Password to access the Fortinet FortiManager server to which you will connect and perform the automated operations.</li></ul><strong>If you choose 'API Key'</strong><ul><li>API Key: API key to access the Fortinet FortiManager server to which you will connect and perform the automated operations.</li></ul></td>
 </tr><tr><td>Port</td><td>Port number used to access the Fortinet FortiManager server to which you will connect and perform the automated operations. By default, this is set to 443.
 </td>
 </tr><tr><td>Verify SSL</td><td>Specifies whether the SSL certificate for the server is to be verified or not. <br/>By default, this option is set to True.</td></tr>
@@ -91,9 +94,9 @@ The following automated operations can be included in playbooks and you can also
 ### operation: JSON RPC Exec
 #### Input parameters
 <table border=1><thead><tr><th>Parameter</th><th>Description</th></tr></thead><tbody><tr><td>URL</td><td>The url you wish to hit
-</td></tr><tr><td>Data</td><td>Pass a json object for the data you want to send. 
+</td></tr><tr><td>Data</td><td>Pass a json object for the data you want to send.
 </td></tr><tr><td>Track Task</td><td>Checking this box will attempt to track a task if found, and wait to return the output until that task is complete
-</td></tr></tbody></table>
+<br><strong>If you choose 'true'</strong><ul><li>Task Timeout: The time in seconds to wait for the task to complete before returning an error</li><li>Zero Percent Timeout: Timeout of task that has not progressed past 0%</li><li>Task Stale Timeout: Timeout of task that has started but has not progressed</li><li>Delete Task On Timeout: If a task fails to complete it should be deleted before starting a new task on the device</li></ul></td></tr></tbody></table>
 
 #### Output
 
@@ -117,7 +120,7 @@ The following automated operations can be included in playbooks and you can also
 
  The output contains a non-dictionary value.
 ## Included playbooks
-The `Sample - fortinet-fortimanager-json-rpc - 1.0.5` playbook collection comes bundled with the Fortinet FortiManager JSON RPC connector. These playbooks contain steps using which you can perform all supported actions. You can see bundled playbooks in the **Automation** > **Playbooks** section in FortiSOAR&trade; after importing the Fortinet FortiManager JSON RPC connector.
+The `Sample - fortinet-fortimanager-json-rpc - 1.0.6` playbook collection comes bundled with the Fortinet FortiManager JSON RPC connector. These playbooks contain steps using which you can perform all supported actions. You can see bundled playbooks in the **Automation** > **Playbooks** section in FortiSOAR&trade; after importing the Fortinet FortiManager JSON RPC connector.
 
 - JSON RPC Add
 - JSON RPC Delete

@@ -2,7 +2,7 @@
   "name": "fortinet-fortimanager-json-rpc",
   "version": "1.0.6",
   "label": "Fortinet FortiManager JSON RPC",
-  "description": "The Fortinet FortiManager JSON RPC Connector is an advanced connector with freeform actions to use the JSON-RPC API directly. This connector puts the onus on the user to understand the FortiManager API. To use the connector that simplify actions please see the original Fortinet FortiManager Connector",
+  "description": "The Fortinet FortiManager JSON RPC Connector is an advanced connector with freeform actions to use the JSON-RPC API directly. This connector puts the onus on the user to understand the FortiManager API. To use the connector that simplify actions please see the original Fortinet FortiManager Connector.",
   "publisher": "Fortinet CSE",
   "contributor": "Dylan Spille",
   "cs_approved": false,
@@ -32,6 +32,7 @@
         "visible": true,
         "type": "select",
         "name": "auth_method",
+        "description": "Select the method using which you will authenticate to the Fortinet FortiManager server.",
         "options": [
           "Username/Password",
           "API Key"
@@ -46,8 +47,7 @@
               "editable": true,
               "visible": true,
               "required": true,
-              "description": "Username with JSON-RPC enabled to access the Fortinet FortiManager server to which you will connect and perform the automated operations.",
-              "isOnChange": false
+              "description": "Username with JSON-RPC enabled to access the Fortinet FortiManager server to which you will connect and perform the automated operations."
             },
             {
               "name": "password",
@@ -56,8 +56,7 @@
               "editable": true,
               "visible": true,
               "required": true,
-              "description": "Password to access the Fortinet FortiManager server to which you will connect and perform the automated operations.",
-              "isOnChange": false
+              "description": "Password to access the Fortinet FortiManager server to which you will connect and perform the automated operations."
             }
           ],
           "API Key": [
@@ -68,15 +67,11 @@
               "visible": true,
               "type": "password",
               "name": "api_key",
-              "description": "Enter your FortiManager api key",
-              "tooltip": "Your FortiManager api key",
-              "isOnChange": true,
-              "onChangeParam": "Authentication Method",
-              "onChangeOption": "Key"
+              "description": "API key to access the Fortinet FortiManager server to which you will connect and perform the automated operations.",
+              "tooltip": "Your FortiManager api key"
             }
           ]
-        },
-        "isOnChange": false
+        }
       },
       {
         "name": "port",
@@ -243,7 +238,7 @@
           "required": true,
           "placeholder": "/sys/login/user",
           "description": "The url you wish to hit",
-            "tooltip": "The url you wish to hit"
+          "tooltip": "The url you wish to hit"
         },
         {
           "name": "data",
@@ -254,7 +249,7 @@
           "required": true,
           "placeholder": {},
           "description": "Pass a json object for the data you want to send.",
-            "tooltip": "Pass a json object for the data you want to send."
+          "tooltip": "Pass a json object for the data you want to send."
         },
         {
           "name": "track_task",
@@ -277,10 +272,7 @@
                 "editable": true,
                 "value": 21600,
                 "description": "The time in seconds to wait for the task to complete before returning an error",
-                "tooltip": "The time in seconds to wait for the task to complete before returning an error",
-                "isOnChange": true,
-                "onChangeParam": "Track Task",
-                "onChangeOption": "true"
+                "tooltip": "The time in seconds to wait for the task to complete before returning an error"
               },
               {
                 "title": "Zero Percent Timeout",
@@ -291,10 +283,7 @@
                 "editable": true,
                 "value": 30,
                 "description": "Timeout of task that has not progressed past 0%",
-                "tooltip": "Timeout of task that has not progressed past 0%",
-                "isOnChange": true,
-                "onChangeParam": "Track Task",
-                "onChangeOption": "true"
+                "tooltip": "Timeout of task that has not progressed past 0%"
               },
               {
                 "title": "Task Stale Timeout",
@@ -305,10 +294,7 @@
                 "editable": true,
                 "value": 120,
                 "description": "Timeout of task that has started but has not progressed",
-                "tooltip": "Timeout of task that has started but has not progressed",
-                "isOnChange": true,
-                "onChangeParam": "Track Task",
-                "onChangeOption": "true"
+                "tooltip": "Timeout of task that has started but has not progressed"
               },
               {
                 "title": "Delete Task On Timeout",
@@ -319,10 +305,7 @@
                 "editable": true,
                 "value": true,
                 "description": "If a task fails to complete it should be deleted before starting a new task on the device",
-                "tooltip": "If a task fails to complete it should be deleted before starting a new task on the device",
-                "isOnChange": true,
-                "onChangeParam": "Track Task",
-                "onChangeOption": "true"
+                "tooltip": "If a task fails to complete it should be deleted before starting a new task on the device"
               }
             ]
           }
