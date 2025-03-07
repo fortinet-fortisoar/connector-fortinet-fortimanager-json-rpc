@@ -163,3 +163,4 @@ cython_debug/
 ######################
 .DS_Store
 /.fortisoar/local_data.json
+/tests/scripts/
