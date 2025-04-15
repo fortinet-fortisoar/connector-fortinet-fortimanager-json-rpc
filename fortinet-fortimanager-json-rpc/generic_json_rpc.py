@@ -213,14 +213,19 @@ def perform_rpc_action(action: str, config: dict, params: dict) -> dict:
             # Also need to make sure that the response is a dict because some exec actions like sys/proxy/info can return a list
             if action == 'execute' and params.get("track_task", False) and isinstance(action_response, dict):
                 task = action_response.get('task') or action_response.get('taskid')
-                track_task_params = parse_track_task_params(params)
-                status, task_response = fmg.track_task(task, **track_task_params)
-                response["task_response"] = task_response
+                # handle case where no task id is found and there is an attempt to track task
+                if not task:
+                    response["task_response"] = None
+                    response["error"] = "No task id found in execute_response and track_task is set to True."
+                else:
+                    track_task_params = parse_track_task_params(params)
+                    status, task_response = fmg.track_task(task, **track_task_params)
+                    response["task_response"] = task_response
 
-                # Handle special cases. Putting this here because the task needs to be tracked first for exec actions
-                special_case_result = handle_special_cases(fmg, url, data, action_response, task_response)
-                if special_case_result:
-                    response["special_case_response"] = special_case_result
+                    # Handle special cases. Putting this here because the task needs to be tracked first for exec actions
+                    special_case_result = handle_special_cases(fmg, url, data, action_response, task_response)
+                    if special_case_result:
+                        response["special_case_response"] = special_case_result
 
                 # I'm not sure if we need to commit changes here after the task is tracked, but leaving it here for now
                 if fmg._lock_ctx.uses_workspace:

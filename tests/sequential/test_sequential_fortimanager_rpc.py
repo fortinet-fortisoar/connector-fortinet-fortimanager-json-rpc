@@ -316,6 +316,42 @@ def test_rpc_delete(setup_params):
                                                    None) == "/pm/config/adom/root/obj/firewall/address/host-172-23-200-121", "Expected url '/pm/config/adom/root/obj/firewall/address/host-172-23-200-121' in response"
 
 
+def test_rpc_add_device_invalid_data(auth_config):
+    params = {
+        "url": "/dvm/cmd/add/device",
+        "data": {
+            "adom": "fake_adom",
+            "flags": [
+                "create_task",
+                "nonblocking"
+            ],
+            "device": {
+                "mr": 4,
+                "sn": "FGT60F0123456789",
+                "name": "",
+                "patch": 0,
+                "os_ver": 6,
+                "os_type": "fos",
+                "mgmt_mode": "fmg",
+                "meta fields": {
+                    "Contact Email": "admin@test.com"
+                },
+                "device action": "add_model"
+            }
+        },
+        "track_task": True
+    }
+    try:
+        response = operations['json_rpc_execute'](auth_config, params)
+        assert "error" in response, "Expected error for invalid data"
+        assert response.get("status") == -20002, "Expected status -20002 for invalid data"
+        assert response.get("task_response", "") is None, "Expected task_response to be None for invalid data"
+    except operations_package.ConnectorError as e:
+        assert True, f"Expected error for invalid data"
+        print(e)
+
+
+
 def test_rpc_execute(auth_config):
     # add a model device
     params = {
