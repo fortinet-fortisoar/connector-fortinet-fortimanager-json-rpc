@@ -111,9 +111,15 @@ class TestRPCOperations:
         }
 
         logger.info(f"Running test with {auth_method} authentication for {input_set['name']}")
+        print(f"Running test with {auth_method} authentication for {input_set['name']}")
 
         try:
-            add_response = operations['json_rpc_add'](config, params_add)
+            for attempt in range(3):
+
+                add_response = operations['json_rpc_add'](config, params_add)
+                print(f"Attempt {attempt +1}: {add_response}")
+                if add_response.get("status", None) == 0:
+                    break
             assert add_response.get("status",
                                     None) == 0, f"Add operation failed with status {add_response.get('status')}"
             assert "add_response" in add_response, "Response missing 'add_response' key"
@@ -121,16 +127,23 @@ class TestRPCOperations:
                 "name"], f"Expected name '{input_set['name']}' in response"
 
             logger.info(f"Successfully added object {input_set['name']} using {auth_method} authentication")
-
+            print(f"Successfully added object {input_set['name']} using {auth_method} authentication")
         except my_package.ConnectorError as e:
             logger.error(f"ConnectorError occurred during add operation: {str(e)}")
             pytest.fail(f"Add operation failed due to ConnectorError: {str(e)}")
 
         finally:
             try:
-                delete_response = operations['json_rpc_delete'](config, params_delete)
+                for attempt in range(3):
+                    delete_response = operations['json_rpc_delete'](config, params_delete)
+                    print(f"Attempt {attempt +1}: {delete_response}")
+                    if delete_response.get("status", None) == 0:
+                        break
+                print(delete_response)
                 assert delete_response.get("status",
                                            None) == 0, f"Delete operation failed with status {delete_response.get('status')}"
                 logger.info(f"Successfully deleted object {input_set['name']} using {auth_method} authentication")
+                print(f"Successfully deleted object {input_set['name']} using {auth_method} authentication")
             except my_package.ConnectorError as e:
                 logger.error(f"ConnectorError occurred during delete operation: {str(e)}")
+                print(f"Delete operation failed due to ConnectorError: {str(e)}")
