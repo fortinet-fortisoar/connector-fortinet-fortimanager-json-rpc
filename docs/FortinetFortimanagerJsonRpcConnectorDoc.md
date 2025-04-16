@@ -4,7 +4,7 @@ The Fortinet FortiManager JSON RPC Connector is an advanced connector with freef
 
 ### Version information
 
-Connector Version: 1.0.6
+Connector Version: 1.1.0
 
 Authored By: Fortinet CSE
 
@@ -12,17 +12,11 @@ Contributors: Dylan Spille
 
 Certified: No
 
-## Release Notes for version 1.0.6
-Following enhancements have been made to the Fortinet FortiManager JSON RPC Connector in version 1.0.6:
+## Release Notes for version 1.1.0
+Following enhancements have been made to the Fortinet FortiManager JSON RPC Connector in version 1.1.0:
 
 <ul>
-<li>Support for authenticating to FMG with an API Key</li>
-<li>Support for new pyFMG track task parameters</li>
-<li><p>New implicit handling for special case operations in FMG that always require more than one API call to complete an action</p>
-
-<ul>
-<li>This is like a smart handling function to do what would naturally come next. If users requests for A, the connector will also ask for B once A is complete</li>
-</ul></li>
+<li>Fixed task tracking issue by implementing an early exit when no task ID is found during execute operations.</li>
 </ul>
 
 ## Installing the connector
@@ -120,7 +114,7 @@ The following automated operations can be included in playbooks and you can also
 
  The output contains a non-dictionary value.
 ## Included playbooks
-The `Sample - fortinet-fortimanager-json-rpc - 1.0.6` playbook collection comes bundled with the Fortinet FortiManager JSON RPC connector. These playbooks contain steps using which you can perform all supported actions. You can see bundled playbooks in the **Automation** > **Playbooks** section in FortiSOAR&trade; after importing the Fortinet FortiManager JSON RPC connector.
+The `Sample - fortinet-fortimanager-json-rpc - 1.1.0` playbook collection comes bundled with the Fortinet FortiManager JSON RPC connector. These playbooks contain steps using which you can perform all supported actions. You can see bundled playbooks in the **Automation** > **Playbooks** section in FortiSOAR&trade; after importing the Fortinet FortiManager JSON RPC connector.
 
 - JSON RPC Add
 - JSON RPC Delete
