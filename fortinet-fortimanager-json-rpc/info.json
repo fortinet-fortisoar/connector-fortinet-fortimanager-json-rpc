@@ -154,6 +154,39 @@
       "output_schema": {}
     },
     {
+      "operation": "json_rpc_update",
+      "title": "JSON RPC Update",
+      "annotation": "json_rpc_update",
+      "description": "A Generic FMG Update action that lets you specify any valid URL and data object",
+      "category": "investigation",
+      "is_config_required": true,
+      "visible": true,
+      "enabled": true,
+      "parameters": [
+        {
+          "name": "url",
+          "title": "URL",
+          "type": "text",
+          "editable": true,
+          "visible": true,
+          "required": true,
+          "placeholder": "/sys/login/user",
+          "description": "The url you wish to hit"
+        },
+        {
+          "name": "data",
+          "title": "Data",
+          "type": "json",
+          "editable": true,
+          "visible": true,
+          "required": true,
+          "placeholder": {},
+          "description": "Pass a json object for the data you want to send. "
+        }
+      ],
+      "output_schema": {}
+    },
+    {
       "operation": "json_rpc_set",
       "title": "JSON RPC Set",
       "annotation": "json_rpc_set",
