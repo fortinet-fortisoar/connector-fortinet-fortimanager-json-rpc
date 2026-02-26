@@ -34,6 +34,13 @@ def json_rpc_add(config: dict, params: dict) -> dict:
     except Exception as e:
         raise ConnectorError(str(e))
 
+def json_rpc_update(config: dict, params: dict) -> dict:
+    action = "update"
+    try:
+        response = perform_rpc_action(action, config, params)
+        return response
+    except Exception as e:
+        raise ConnectorError(str(e))
 
 def json_rpc_set(config: dict, params: dict) -> dict:
     action = "set"
@@ -111,6 +118,7 @@ def get_device_vulnerabilities(config: dict, params: dict) -> dict:
 
 operations = {
     'json_rpc_add': json_rpc_add,
+    'json_rpc_update': json_rpc_update,
     'json_rpc_set': json_rpc_set,
     'json_rpc_get': json_rpc_get,
     'json_rpc_execute': json_rpc_execute,
