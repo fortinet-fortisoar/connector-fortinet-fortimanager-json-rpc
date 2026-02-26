@@ -2,6 +2,7 @@
 
 Following enhancements have been made to the Fortinet FortiManager JSON RPC Connector in version 1.2.7:
 
+- New **JSON RPC Update** action, which calls FortiManager's `update` method. Unlike **JSON RPC Set**, it changes only an object that already exists: on a missing object it returns `-3` and creates nothing, while `set` creates it.
 - Workspace locking now reflects behaviour measured against a live appliance rather than assumption:
   - `/securityconsole/install/device` takes a lock again. Without one, an install with pending device-database changes fails inside the queued task while the RPC still reports success.
   - `/securityconsole/install/package`, `/securityconsole/install/device` and `/securityconsole/reinstall/package` now hold their lock until the queued task finishes, and return the task outcome, so an install can no longer fail silently when the caller does not request task tracking.
