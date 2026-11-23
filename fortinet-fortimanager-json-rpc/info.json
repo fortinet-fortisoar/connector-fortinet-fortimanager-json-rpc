@@ -73,8 +73,8 @@
               "visible": true,
               "type": "password",
               "name": "api_key",
-              "description": "API key to access the Fortinet FortiManager server to which you will connect and perform the automated operations.",
-              "tooltip": "Your FortiManager api key",
+              "description": "API key to access the Fortinet FortiManager server to which you will connect and perform the automated operations. FortiManager treats every request made with one API key as a single session, so the connector runs workspace-locking operations that share a key one at a time per ADOM. Inside FortiSOAR, including an HA cluster, this is enforced across all nodes; on a remote agent it only covers that agent, so give each agent its own key or use Username/Password.",
+              "tooltip": "Your FortiManager API key. Workers sharing one key share one FortiManager session; the connector serialises their workspace writes per ADOM.",
               "isOnChange": true,
               "onChangeParam": "Authentication Method",
               "onChangeOption": "API Key"

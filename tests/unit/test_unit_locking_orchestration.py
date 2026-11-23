@@ -185,14 +185,24 @@ class TestNoLockRequired:
     def test_install_urls_are_not_locked(self, url):
         fmg = FakeFMG(exec_result=(0, {}))
         run_action(fmg, "execute", {"url": url, "data": {"adom": "root"}}, MINIMAL)
-        assert fmg.calls == [("execute", url)]
+        # install/preview also runs its preview install and result call (see
+        # test_unit_special_cases.py), so pin the intent: the call ran, and nothing locked.
+        assert ("execute", url) in fmg.calls
+        assert workspace_calls(fmg) == []
+        assert not any(name in ("lock_adom", "commit_changes", "unlock_adom")
+                       for name, _ in fmg.calls)
 
     @pytest.mark.parametrize("url", sorted(generic_json_rpc.NO_LOCK_URLS))
     def test_install_urls_are_not_locked_with_minimal_locking_off(self, url):
         # The NO_LOCK_URLS optimisation is unconditional, so pin it for legacy users too.
         fmg = FakeFMG(exec_result=(0, {}))
         run_action(fmg, "execute", {"url": url, "data": {"adom": "root"}}, BASE_CONFIG)
-        assert fmg.calls == [("execute", url)]
+        # install/preview also runs its preview install and result call (see
+        # test_unit_special_cases.py), so pin the intent: the call ran, and nothing locked.
+        assert ("execute", url) in fmg.calls
+        assert workspace_calls(fmg) == []
+        assert not any(name in ("lock_adom", "commit_changes", "unlock_adom")
+                       for name, _ in fmg.calls)
 
 
 # ---------------------------------------------------------------------------
@@ -873,10 +883,12 @@ class TestLockHeldUntilTaskCompletes:
         assert "No devices" in response["error"]
 
     def test_unlocked_urls_do_not_gain_implicit_tracking(self):
-        # The hold only exists to protect a lock. install/preview takes none.
+        # The hold only exists to protect a lock. A firmware upgrade takes none.
+        # (install/preview is unlocked too, but tracks for its follow-up result call;
+        # see test_unit_special_cases.py.)
         fmg = FakeFMG(exec_result=(0, {"task": 42}))
         run_action(fmg, "execute",
-                   {"url": "/securityconsole/install/preview", "data": {"adom": "root"}},
+                   {"url": "/um/image/upgrade/ext", "data": {"adom": "root"}},
                    MINIMAL)
         assert not any(name == "track_task" for name, _ in fmg.calls)
 
@@ -1120,3 +1132,75 @@ class TestReadOnlyExecUrlsTakeNoLock:
         run_action(fmg, "execute", {"url": "/um/image/upgrade/ext",
                                     "data": {"adom": "root"}}, MINIMAL)
         assert workspace_calls(fmg) == []
+
+
+# ---------------------------------------------------------------------------
+# ADOM parsed from a URL whose last segment is the ADOM
+# ---------------------------------------------------------------------------
+
+class TestAdomAtEndOfUrl:
+    def test_trailing_adom_segment_resolves(self):
+        assert generic_json_rpc.parse_adom_from_input("/pm/pkg/adom/root", {}) == "root"
+
+    def test_trailing_adom_in_free_form_entry_resolves(self):
+        data = {"data": [{"url": "/pm/pkg/adom/branch"}]}
+        assert generic_json_rpc.parse_adom_from_input("", data) == "branch"
+
+    def test_package_create_locks_the_adom(self):
+        fmg = FakeFMG()
+        run_action(fmg, "add", {"url": "/pm/pkg/adom/root",
+                                "data": {"data": [{"name": "p2", "type": "pkg"}]}}, BASE_CONFIG)
+        assert ("lock_adom", "root") in fmg.calls
+        assert ("commit_changes", "root") in fmg.calls
+
+
+# ---------------------------------------------------------------------------
+# Device-DB writes take the ADOM lock even with minimal locking
+# ---------------------------------------------------------------------------
+
+class TestDeviceDbWritesLockTheAdom:
+    # Live 7.6.8: a device-DB write committed under dev/<device> never marks the device
+    # modified, so the next install skips it. See ADOM_ONLY_URL_PREFIXES.
+    DEVDB = "/pm/config/device/gate/global/system/global"
+
+    def test_device_db_write_locks_the_adom_with_minimal_locking(self):
+        fmg = FakeFMG()
+        run_action(fmg, "set", {"url": self.DEVDB, "data": {"adom": "root", "data": {}}}, MINIMAL)
+        assert ("lock_adom", "root") in fmg.calls
+        assert not any("/workspace/lock/dev/" in str(url) for _, url in fmg.calls)
+
+    def test_free_form_batch_with_a_device_db_url_locks_the_adom(self):
+        fmg = FakeFMG()
+        run_action(fmg, "free_form", {"method": "set", "data": {"data": [
+            {"url": self.DEVDB, "data": {}},
+        ], "adom": "root"}}, MINIMAL)
+        assert ("lock_adom", "root") in fmg.calls
+        assert not any("/workspace/lock/dev/" in str(url) for _, url in fmg.calls)
+
+
+class _RejectingLockFMG:
+    def __init__(self, status):
+        self.status, self.attempts = status, 0
+
+    def lock_adom(self, adom):
+        self.attempts += 1
+        return self.status, {"status": {"code": self.status}}
+
+
+@pytest.mark.parametrize("status", [-6, -10, -11])
+def test_lock_adom_fails_fast_on_permanent_rejection(status):
+    """-11 is what workspace mode returns for an ADOM that does not exist (live-verified);
+    it used to be retried for the full ~2.3h budget."""
+    fmg = _RejectingLockFMG(status)
+    with patch.object(generic_json_rpc.time, "sleep") as sleep:
+        assert generic_json_rpc.lock_adom(fmg, "fake_adom", "/dvm/cmd/add/device", {}) is False
+    assert fmg.attempts == 1
+    sleep.assert_not_called()
+
+
+def test_lock_adom_retries_contention():
+    fmg = _RejectingLockFMG(-20055)
+    with patch.object(generic_json_rpc, "MAX_RETRY_LIMIT", 3), \
+            patch.object(generic_json_rpc.time, "sleep"):
+        assert generic_json_rpc.lock_adom(fmg, "root", "/x", {}) is False
+    assert fmg.attempts == 3

@@ -2,6 +2,8 @@
 The Fortinet FortiManager JSON RPC Connector is an advanced connector with freeform actions to use the JSON-RPC API directly. This connector puts the onus on the user to understand the FortiManager API. To use the connector that simplify actions please see the original Fortinet FortiManager Connector
 <p>This document provides information about the Fortinet FortiManager JSON RPC Connector, which facilitates automated interactions, with a Fortinet FortiManager JSON RPC server using FortiSOAR&trade; playbooks. Add the Fortinet FortiManager JSON RPC Connector as a step in FortiSOAR&trade; playbooks and perform automated operations with Fortinet FortiManager JSON RPC.</p>
 
+What the connector does around each call (workspace locking, installs, shared API keys, special cases) is explained in [How the connector works](HOW_THE_CONNECTOR_WORKS.md).
+
 ### Version information
 
 Connector Version: 1.0.6

@@ -17,10 +17,18 @@ These tests verify the workspace locking behavior across several scenarios:
     without contention
 
 Requirements:
-  - A live FortiManager reachable via the .env credentials
+  - A live FortiManager reachable via the .env credentials, in workspace mode
   - The "default" policy package must exist in the "root" ADOM
   - A managed device named via MANAGED_DEVICE_NAME must exist if device-scope
     tests are run (these skip automatically if the env var is not set)
+  - A second package: SECOND_PKG_NAME, or the suite creates "lock-test-pkg2"
+    through the connector and deletes it afterwards
+
+Every URL written here is a real object path, verified on a live 7.6.8 appliance:
+policies under /pm/config/adom/<adom>/pkg/<pkg>/firewall/policy, and device-DB objects
+under /pm/config/device/<dev>/vdom/<vdom>/... (that URL carries no ADOM, so the payload
+names it -- unlocked, workspace mode refuses the write -10147). Address objects are not
+package objects: /pm/config/adom/<adom>/pkg/<pkg>/firewall/address answers -3.
 
 Tests that depend on workspace mode being enabled will skip automatically
 when workspace is disabled.
@@ -30,6 +38,7 @@ import importlib
 import logging
 import os
 import sys
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -82,6 +91,8 @@ def auth_config(request):
             "auth_method": "Username/Password",
         })
     else:
+        if not os.getenv("API_KEY"):
+            pytest.skip("API_KEY not set")
         base.update({
             "api_key": os.getenv("API_KEY"),
             "auth_method": "API Key",
@@ -135,6 +146,77 @@ def _delete_address(auth_config, name, base="/pm/config/adom/root/obj/firewall/a
         pass
 
 
+def _make_policy(name):
+    # A deny policy cannot keep the default logtraffic "utm" (-9998), so disable it.
+    return {"name": name, "srcintf": ["any"], "dstintf": ["any"], "srcaddr": ["all"],
+            "dstaddr": ["all"], "service": ["ALL"], "schedule": ["always"],
+            "action": 0, "logtraffic": 0}
+
+
+def _add_policy(config, name, pkg="default"):
+    """Add a policy to a package. Returns (response, policyid or None)."""
+    response = operations["json_rpc_add"](config, {
+        "url": f"/pm/config/adom/root/pkg/{pkg}/firewall/policy",
+        "data": {"data": [_make_policy(name)]}})
+    add_response = response.get("add_response")
+    policy_id = add_response.get("policyid") if isinstance(add_response, dict) else None
+    return response, policy_id
+
+
+def _delete_policy(config, policy_id, pkg="default"):
+    if policy_id is None:
+        return
+    try:
+        operations["json_rpc_delete"](config, {
+            "url": f"/pm/config/adom/root/pkg/{pkg}/firewall/policy/{policy_id}", "data": {}})
+    except Exception:
+        pass
+
+
+def _device_address_url(device):
+    return f"/pm/config/device/{device}/vdom/root/firewall/address"
+
+
+def _add_device_address(config, device, name, octet=230):
+    return operations["json_rpc_add"](config, {
+        "url": _device_address_url(device),
+        "data": {"adom": "root", "data": [_make_address(name, octet)]}})
+
+
+def _delete_device_address(config, device, name):
+    try:
+        operations["json_rpc_delete"](config, {
+            "url": f"{_device_address_url(device)}/{name}", "data": {"adom": "root"}})
+    except Exception:
+        pass
+
+
+@pytest.fixture(scope="module")
+def second_package():
+    """SECOND_PKG_NAME, or a package created (and removed) through the connector.
+
+    Creating it is itself a regression check: /pm/pkg/adom/root used to resolve no
+    ADOM (the parser wanted a trailing "/"), so the create went out unlocked and was
+    refused -10147 in workspace mode.
+    """
+    existing = os.getenv("SECOND_PKG_NAME", "")
+    if existing:
+        yield existing
+        return
+    config = {"address": os.getenv("ADDRESS"), "port": os.getenv("PORT"),
+              "verify_ssl": os.getenv("VERIFY_SSL", "False").lower() in ("true", "1", "t"),
+              "username": os.getenv("USERNAME"), "password": os.getenv("PASSWORD"),
+              "auth_method": "Username/Password", "verbose_json": True}
+    name = "lock-test-pkg2"
+    response = operations["json_rpc_add"](config, {
+        "url": "/pm/pkg/adom/root", "data": {"data": [{"name": name, "type": "pkg"}]}})
+    status = response.get("add_response", {}).get("status", {}).get("code")
+    # -2 = object already exists (left by an interrupted run); usable all the same.
+    assert response.get("status") == 0 or status == -2, f"Could not create {name}: {response}"
+    yield name
+    operations["json_rpc_delete"](config, {"url": f"/pm/pkg/adom/root/{name}", "data": {}})
+
+
 def _open_fmg(auth_config):
     """Return an open pyFMG FortiManager context (caller must close it)."""
     from pyFMG.fortimgr import FortiManager as FMGDirect
@@ -144,6 +226,47 @@ def _open_fmg(auth_config):
     fmg.login()
     return fmg
 
+
+
+def _open_other_session():
+    """A pyFMG session that is genuinely another FMG session: always a password login.
+
+    Every request made with one API key shares a single FMG session (one lock_sid), so
+    a holder opened with the same key as the connector is not "another session" -- the
+    connector would write straight through its lock. Contention tests use this instead.
+    """
+    from pyFMG.fortimgr import FortiManager as FMGDirect
+    server_host = f"{os.getenv('ADDRESS').rstrip('/')}:{os.getenv('PORT')}"
+    for prefix in ("https://", "http://"):
+        server_host = server_host.replace(prefix, "")
+    fmg = FMGDirect(server_host, os.getenv("USERNAME"), os.getenv("PASSWORD"),
+                    verify_ssl=False, disable_request_warnings=True)
+    fmg.login()
+    return fmg
+
+
+class TestSharedApiKeyIsOneSession:
+    """Appliance behaviour the connector must design around (live-verified on 7.6.8).
+
+    Two clients using the same API key are the same FMG session: the second lock call
+    succeeds instead of -20055, and either one's unlock drops the lock. If this test
+    starts failing, FMG began isolating API-key callers and the caveat can go.
+    """
+
+    def test_same_key_second_lock_is_not_refused(self, auth_config):
+        if auth_config["auth_method"] != "API Key":
+            pytest.skip("API-key behaviour only")
+        if not _workspace_enabled(auth_config):
+            pytest.skip("Workspace mode not enabled")
+        a, b = _open_fmg(auth_config), _open_fmg(auth_config)
+        try:
+            assert a.lock_adom("root")[0] == 0
+            assert b.lock_adom("root")[0] == 0, "FMG now refuses a second same-key lock"
+            assert b.unlock_adom("root")[0] == 0
+            _, info = a.get("/dvmdb/adom/root/workspace/lockinfo")
+            assert not (info if isinstance(info, list) else []), "B's unlock left A's lock"
+        finally:
+            a.unlock_adom("root")
 
 # ---------------------------------------------------------------------------
 # 1. Lock released after ADOM-level write
@@ -198,17 +321,14 @@ class TestAdomLockRelease:
 class TestMinimalLockRelease:
     """Verifies that minimal (pkg/dev) scope locks are released after each op."""
 
-    PKG = "default"
-    ADDR_NAME = "test-lock-release-pkg"
-    PKG_URL = f"/pm/config/adom/root/pkg/{PKG}/firewall/address/"
-
     def test_pkg_lockinfo_clean_after_minimal_write(self, minimal_lock_config):
         """After a pkg-scoped minimal-lock write, lockinfo should show no lock."""
         if not _workspace_enabled(minimal_lock_config):
             pytest.skip("Workspace mode not enabled")
 
+        policy_id = None
         try:
-            resp = _add_address(minimal_lock_config, self.ADDR_NAME, url=self.PKG_URL)
+            resp, policy_id = _add_policy(minimal_lock_config, "test-lock-release-pkg")
             assert resp.get("status") == 0, f"Add failed: {resp}"
 
             lock_data = _get_lockinfo(minimal_lock_config)
@@ -217,8 +337,7 @@ class TestMinimalLockRelease:
                 f"Expected empty lockinfo after minimal-lock pkg write but got: {lock_data}"
             )
         finally:
-            _delete_address(minimal_lock_config, self.ADDR_NAME,
-                            base=f"/pm/config/adom/root/pkg/{self.PKG}/firewall/address")
+            _delete_policy(minimal_lock_config, policy_id)
 
     def test_obj_url_falls_back_to_adom_lock(self, minimal_lock_config):
         """
@@ -247,10 +366,9 @@ class TestMinimalLockRelease:
         if not _workspace_enabled(minimal_lock_config):
             pytest.skip("Workspace mode not enabled")
 
-        dev_url = f"/dvmdb/adom/root/device/{MANAGED_DEVICE_NAME}/vdom/root/firewall/address/"
         name = "test-lock-release-dev"
         try:
-            resp = _add_address(minimal_lock_config, name, url=dev_url)
+            resp = _add_device_address(minimal_lock_config, MANAGED_DEVICE_NAME, name)
             assert resp.get("status") == 0, f"Device-scope write failed: {resp}"
 
             lock_data = _get_lockinfo(minimal_lock_config)
@@ -258,8 +376,7 @@ class TestMinimalLockRelease:
                 f"Device lock not released after minimal-lock write: {lock_data}"
             )
         finally:
-            _delete_address(minimal_lock_config, name,
-                            base=f"/dvmdb/adom/root/device/{MANAGED_DEVICE_NAME}/vdom/root/firewall/address")
+            _delete_device_address(minimal_lock_config, MANAGED_DEVICE_NAME, name)
 
 
 # ---------------------------------------------------------------------------
@@ -268,62 +385,85 @@ class TestMinimalLockRelease:
 
 class TestNoLockUrlsBypass:
     """
-    Verifies that operations on NO_LOCK_URLS complete without attempting to
-    acquire the workspace lock — even when the ADOM is locked by another session.
+    Every URL in NO_LOCK_URLS is called through the connector while a second session
+    holds the root ADOM lock, with an adom in the payload -- the condition under which
+    the connector used to lock. An exempt URL answers in seconds; one that took the lock
+    would sit in the retry loop until the holder lets go. A real write runs under the
+    same hold as a control and must still be waiting, so the test can tell the two apart.
     """
 
-    def test_no_lock_url_completes_while_adom_locked(self, auth_config):
-        """
-        Pre-lock the ADOM from a second session, then call a NO_LOCK_URL.
-        The call must complete quickly (< 5 s) — if it tried to acquire the lock
-        it would sleep 1-10 s per retry attempt.
-        """
+    # Never called: it starts a real firmware upgrade. Its membership rests on the
+    # two-arm upgrade measurement recorded beside NO_LOCK_URLS.
+    NEVER_CALLED = {"/um/image/upgrade/ext"}
+    FAST_SECONDS = 60
+    CONTROL_WINDOW = 20
+
+    @staticmethod
+    def _payload(url):
+        device = MANAGED_DEVICE_NAME
+        scope = [{"name": device, "vdom": "root"}]
+        return {
+            "/securityconsole/install/preview": {"adom": "root", "scope": scope},
+            "/securityconsole/preview/result": {"adom": "root", "scope": scope},
+            "/sys/proxy/json": {"target": [f"/adom/root/device/{device}"], "action": "get",
+                                "resource": "/api/v2/monitor/system/status"},
+        }.get(url, {"adom": "root"})
+
+    @pytest.fixture
+    def adom_held(self, auth_config):
         if not _workspace_enabled(auth_config):
             pytest.skip("Workspace mode not enabled")
+        holder = _open_other_session()
+        status, _ = holder.lock_adom("root")
+        if status != 0:
+            holder.logout()
+            pytest.skip(f"Could not pre-acquire ADOM lock (status={status})")
+        yield holder
+        holder.unlock_adom("root")
+        holder.logout()
 
-        pre_lock_fmg = _open_fmg(auth_config)
+    @pytest.mark.skipif(not MANAGED_DEVICE_NAME, reason="MANAGED_DEVICE_NAME env var not set")
+    @pytest.mark.parametrize("url", sorted(NO_LOCK_URLS))
+    def test_no_lock_url_answers_while_adom_locked(self, auth_config, adom_held, url):
+        if url in self.NEVER_CALLED:
+            pytest.skip(f"{url} is never called live: it starts a real upgrade")
+        start = time.time()
+        response = operations["json_rpc_execute"](auth_config, {"url": url, "data": self._payload(url)})
+        elapsed = time.time() - start
+        assert elapsed < self.FAST_SECONDS, f"{url} took {elapsed:.1f}s -- it waited on the lock"
+        if url == "/securityconsole/install/preview":
+            # Exempt from the connector's lock, but the preview install it runs cannot
+            # while another session holds the ADOM. It must fail fast and visibly.
+            prepare = response.get("special_case_prepare") or {}
+            assert response.get("status") != 0, response
+            assert "no write permission" in str(prepare.get("error")), prepare
+        else:
+            assert response.get("status") == 0, f"{url}: {response}"
+
+    def test_control_write_waits_while_adom_locked(self, auth_config, adom_held):
+        name = "test-no-lock-control"
+        done = threading.Event()
+
+        def write():
+            _add_address(auth_config, name, octet=240)
+            done.set()
+
+        threading.Thread(target=write, daemon=True).start()
         try:
-            lock_status, _ = pre_lock_fmg.lock_adom("root")
-            if lock_status == -9:
-                pytest.skip("Workspace mode not enabled (lock returned -9)")
-            if lock_status != 0:
-                pytest.skip(f"Could not pre-acquire ADOM lock (status={lock_status})")
-
-            params = {
-                "url": "/securityconsole/install/preview",
-                "data": {"adom": "root", "scope": [{"name": "placeholder", "vdom": "root"}]},
-                "track_task": True,
-                "task_timeout": 30,
-            }
-            start = time.time()
-            try:
-                operations["json_rpc_execute"](auth_config, params)
-            except ConnectorError:
-                pass  # install/preview may fail if device doesn't exist; that's fine
-            elapsed = time.time() - start
-
-            assert elapsed < 5, (
-                f"NO_LOCK_URL took {elapsed:.1f}s — it may have waited on the workspace lock. "
-                f"Expected < 5s since {'/securityconsole/install/preview'!r} is in NO_LOCK_URLS."
-            )
+            assert not done.wait(self.CONTROL_WINDOW), (
+                "a real write finished while another session held the ADOM -- the "
+                "no-lock test above cannot tell exempt URLs from locked ones")
         finally:
-            pre_lock_fmg.unlock_adom("root")
-            pre_lock_fmg.logout()
+            adom_held.unlock_adom("root")
+            assert done.wait(120), "control write never finished after the lock was released"
+            _delete_address(auth_config, name)
 
-    def test_all_no_lock_urls_defined_are_reachable(self, auth_config):
-        """
-        Smoke-test: verify every URL in NO_LOCK_URLS is present in the set and
-        does not raise an import error. The live reachability of each URL is
-        covered by other integration tests.
-        """
-        expected = {
-            "/securityconsole/install/device",
-            "/securityconsole/install/package",
-            "/securityconsole/install/preview",
-        }
-        assert expected == set(NO_LOCK_URLS), (
-            f"NO_LOCK_URLS mismatch.\n  Expected: {sorted(expected)}\n  Got: {sorted(NO_LOCK_URLS)}"
-        )
+    def test_every_no_lock_url_has_a_live_case(self):
+        """A new NO_LOCK_URLS entry must come with a payload above, or be named as never called."""
+        generic = {"/securityconsole/install/preview", "/securityconsole/preview/result",
+                   "/sys/proxy/json"}
+        adom_only = {url for url in NO_LOCK_URLS if url.startswith("/um/")}
+        assert set(NO_LOCK_URLS) <= generic | adom_only | self.NEVER_CALLED
 
 
 # ---------------------------------------------------------------------------
@@ -349,7 +489,7 @@ class TestLockContention:
             pytest.skip("Workspace mode not enabled")
 
         # Acquire the ADOM lock from a competing session
-        pre_lock_fmg = _open_fmg(auth_config)
+        pre_lock_fmg = _open_other_session()
         lock_status, _ = pre_lock_fmg.lock_adom("root")
         if lock_status == -9:
             pre_lock_fmg.logout()
@@ -402,7 +542,7 @@ class TestLockContention:
             pytest.skip("Workspace mode not enabled")
 
         pkg = "default"
-        pre_lock_fmg = _open_fmg(minimal_lock_config)
+        pre_lock_fmg = _open_other_session()
         lock_status, _ = pre_lock_fmg.execute(
             url=f"/dvmdb/adom/root/workspace/lock/pkg/{pkg}"
         )
@@ -416,15 +556,15 @@ class TestLockContention:
             pre_lock_fmg.logout()
             pytest.skip(f"Could not pre-acquire pkg lock (status={lock_status})")
 
-        pkg_url = f"/pm/config/adom/root/pkg/{pkg}/firewall/address/"
         name = "test-lock-contention-pkg"
         result_holder = {}
         errors = []
 
         def _do_write():
             try:
-                resp = _add_address(minimal_lock_config, name, url=pkg_url)
+                resp, policy_id = _add_policy(minimal_lock_config, name, pkg=pkg)
                 result_holder["response"] = resp
+                result_holder["policy_id"] = policy_id
             except Exception as exc:
                 errors.append(exc)
 
@@ -442,11 +582,9 @@ class TestLockContention:
             raise errors[0]
 
         resp = result_holder.get("response", {})
+        _delete_policy(minimal_lock_config, result_holder.get("policy_id"), pkg=pkg)
         assert resp.get("status") == 0, f"Pkg write after lock release failed: {resp}"
         assert elapsed >= self.HOLD_SECONDS
-
-        _delete_address(minimal_lock_config, name,
-                        base=f"/pm/config/adom/root/pkg/{pkg}/firewall/address")
 
 
 # ---------------------------------------------------------------------------
@@ -494,6 +632,18 @@ class TestConcurrentWrites:
         for _, name, _ in pairs:
             _delete_address(auth_config, name)
 
+    def _run_concurrent_policies(self, config, writes):
+        """Add policies (name, pkg) in parallel; returns [(name, pkg, response, policy_id)]."""
+        with ThreadPoolExecutor(max_workers=len(writes)) as pool:
+            futures = {pool.submit(_add_policy, config, name, pkg): (name, pkg)
+                       for name, pkg in writes}
+            results = []
+            for future in as_completed(futures):
+                name, pkg = futures[future]
+                response, policy_id = future.result()
+                results.append((name, pkg, response, policy_id))
+        return results
+
     def test_concurrent_pkg_writes_same_pkg_both_succeed(self, minimal_lock_config):
         """
         Two simultaneous writes to the same policy package with minimal_locking=True
@@ -502,51 +652,158 @@ class TestConcurrentWrites:
         if not _workspace_enabled(minimal_lock_config):
             pytest.skip("Workspace mode not enabled")
 
-        pkg = "default"
-        pkg_url = f"/pm/config/adom/root/pkg/{pkg}/firewall/address/"
-        pairs = [
-            (pkg_url, "test-concurrent-pkg-same-1", 211),
-            (pkg_url, "test-concurrent-pkg-same-2", 212),
-        ]
-        results = self._run_concurrent(minimal_lock_config, pairs)
-        for name, resp in results:
-            assert resp.get("status") == 0, f"Concurrent pkg write '{name}' failed: {resp}"
-        base = f"/pm/config/adom/root/pkg/{pkg}/firewall/address"
-        for _, name, _ in pairs:
-            _delete_address(minimal_lock_config, name, base=base)
+        results = self._run_concurrent_policies(minimal_lock_config, [
+            ("test-concurrent-pkg-same-1", "default"),
+            ("test-concurrent-pkg-same-2", "default"),
+        ])
+        for _, pkg, _, policy_id in results:
+            _delete_policy(minimal_lock_config, policy_id, pkg=pkg)
+        for name, _, response, _ in results:
+            assert response.get("status") == 0, f"Concurrent pkg write '{name}' failed: {response}"
 
-    def test_concurrent_pkg_writes_different_pkgs_no_contention(self, minimal_lock_config):
+    def test_concurrent_pkg_writes_different_pkgs_no_contention(self, minimal_lock_config,
+                                                                second_package):
         """
         Two simultaneous writes to DIFFERENT policy packages with minimal_locking=True
-        should complete without lock contention (each holds its own pkg lock).
-        Both must succeed and finish faster than if they had to serialise on a
-        shared ADOM lock.
-
-        Note: this test requires at least two policy packages in root. It skips
-        if a second package named 'default2' is not found.
+        both succeed, each under its own pkg lock.
         """
         if not _workspace_enabled(minimal_lock_config):
             pytest.skip("Workspace mode not enabled")
 
-        pkg1 = "default"
-        pkg2 = os.getenv("SECOND_PKG_NAME", "")
-        if not pkg2:
-            pytest.skip("SECOND_PKG_NAME env var not set — need two packages for this test")
-
-        pairs = [
-            (f"/pm/config/adom/root/pkg/{pkg1}/firewall/address/", "test-concurrent-pkg-diff-1", 221),
-            (f"/pm/config/adom/root/pkg/{pkg2}/firewall/address/", "test-concurrent-pkg-diff-2", 222),
-        ]
         start = time.time()
-        results = self._run_concurrent(minimal_lock_config, pairs)
+        results = self._run_concurrent_policies(minimal_lock_config, [
+            ("test-concurrent-pkg-diff-1", "default"),
+            ("test-concurrent-pkg-diff-2", second_package),
+        ])
         elapsed = time.time() - start
-
-        for name, resp in results:
-            assert resp.get("status") == 0, f"Concurrent cross-pkg write '{name}' failed: {resp}"
-
+        for _, pkg, _, policy_id in results:
+            _delete_policy(minimal_lock_config, policy_id, pkg=pkg)
+        for name, _, response, _ in results:
+            assert response.get("status") == 0, f"Concurrent cross-pkg write '{name}' failed: {response}"
         logger.info(f"Two-package concurrent writes elapsed: {elapsed:.2f}s")
 
-        _delete_address(minimal_lock_config, "test-concurrent-pkg-diff-1",
-                        base=f"/pm/config/adom/root/pkg/{pkg1}/firewall/address")
-        _delete_address(minimal_lock_config, "test-concurrent-pkg-diff-2",
-                        base=f"/pm/config/adom/root/pkg/{pkg2}/firewall/address")
+
+# ---------------------------------------------------------------------------
+# 6. Minimal locking really is minimal
+# ---------------------------------------------------------------------------
+
+class TestMinimalScopeIsNarrow:
+    """
+    "lockinfo is clean afterwards" passes whether the connector took a package lock or
+    the whole ADOM. These tests tell the two apart: a second session holds a lock on a
+    DIFFERENT package, which blocks any ADOM lock outright (measured: lock_adom ->
+    -20055). A write that took the ADOM would sit in the retry loop; a write that took
+    only its own package or device lock completes in seconds.
+    """
+
+    FAST_SECONDS = 30
+
+    @pytest.fixture
+    def other_package_held(self, minimal_lock_config, second_package):
+        if not _workspace_enabled(minimal_lock_config):
+            pytest.skip("Workspace mode not enabled")
+        holder = _open_other_session()
+        status, _ = holder.execute(url=f"/dvmdb/adom/root/workspace/lock/pkg/{second_package}")
+        if status != 0:
+            holder.logout()
+            pytest.skip(f"Could not hold pkg/{second_package} (status={status})")
+        # The premise: with that package held, the ADOM itself cannot be locked.
+        probe = _open_other_session()
+        try:
+            adom_status, _ = probe.lock_adom("root")
+            if adom_status == 0:
+                probe.unlock_adom("root")
+            assert adom_status != 0, "ADOM lock was granted while a package was held"
+        finally:
+            probe.logout()
+        yield second_package
+        holder.execute(url=f"/dvmdb/adom/root/workspace/unlock/pkg/{second_package}")
+        holder.logout()
+
+    def test_pkg_write_does_not_lock_the_adom(self, minimal_lock_config, other_package_held):
+        start = time.time()
+        response, policy_id = _add_policy(minimal_lock_config, "test-minimal-narrow-pkg")
+        elapsed = time.time() - start
+        _delete_policy(minimal_lock_config, policy_id)
+        assert response.get("status") == 0, response
+        assert elapsed < self.FAST_SECONDS, f"pkg write took {elapsed:.1f}s -- it waited on the ADOM"
+
+
+# ---------------------------------------------------------------------------
+# 7. Real installs: the write reaches the FortiGate
+# ---------------------------------------------------------------------------
+
+# Opt-in: a package install pushes the whole package and can delete objects on the
+# device (a first install purges factory defaults). Name a package that mirrors the
+# device -- for example one imported from it -- to run that test.
+INSTALL_PACKAGE = os.getenv("LIVE_INSTALL_PACKAGE", "")
+
+
+def _device_global_alias(config, device):
+    """system global alias read from the FortiGate itself, through FMG's REST proxy."""
+    response = operations["json_rpc_execute"](config, {"url": "/sys/proxy/json", "data": {
+        "target": [f"/adom/root/device/{device}"], "action": "get",
+        "resource": "/api/v2/cmdb/system/global"}})["execute_response"]
+    entry = response[0] if isinstance(response, list) else response
+    return ((entry.get("response") or {}).get("results") or {}).get("alias")
+
+
+def _install(config, url, data):
+    response = operations["json_rpc_execute"](config, {"url": url, "data": data, "track_task": True})
+    return response, response.get("task_response") or {}
+
+
+@pytest.mark.skipif(not MANAGED_DEVICE_NAME, reason="MANAGED_DEVICE_NAME env var not set")
+class TestRealInstall:
+    """
+    "status 0" is not evidence that a change was installed: the install task can end
+    "no changes on device" while every RPC succeeds. These tests read the FortiGate's
+    own config afterwards. They change the device's system global alias and put it back.
+    """
+
+    @pytest.fixture
+    def device_alias_restored(self, auth_config):
+        if not _workspace_enabled(auth_config):
+            pytest.skip("Workspace mode not enabled")
+        original = _device_global_alias(auth_config, MANAGED_DEVICE_NAME)
+        yield original
+        operations["json_rpc_set"](auth_config, {
+            "url": f"/pm/config/device/{MANAGED_DEVICE_NAME}/global/system/global",
+            "data": {"adom": "root", "data": {"alias": original}}})
+        _install(auth_config, "/securityconsole/install/device", {
+            "adom": "root", "scope": [{"name": MANAGED_DEVICE_NAME, "vdom": "root"}]})
+        assert _device_global_alias(auth_config, MANAGED_DEVICE_NAME) == original
+
+    @pytest.mark.parametrize("minimal", [False, True], ids=["adom-lock", "minimal-lock"])
+    def test_device_db_write_reaches_the_device(self, auth_config, device_alias_restored, minimal):
+        # With minimal locking a device-DB write used to take dev/<device>; FMG then left
+        # the device "nomod" and the install skipped the change (5 of 6 live runs).
+        config = dict(auth_config, minimal_locking=minimal)
+        marker = f"lock-test-{'min' if minimal else 'adom'}"
+        write = operations["json_rpc_set"](config, {
+            "url": f"/pm/config/device/{MANAGED_DEVICE_NAME}/global/system/global",
+            "data": {"adom": "root", "data": {"alias": marker}}})
+        assert write.get("status") == 0, write
+        response, task = _install(config, "/securityconsole/install/device", {
+            "adom": "root", "scope": [{"name": MANAGED_DEVICE_NAME, "vdom": "root"}]})
+        assert response.get("status") == 0, response
+        assert task.get("state") in (4, "done"), task
+        assert _device_global_alias(config, MANAGED_DEVICE_NAME) == marker
+        assert not _get_lockinfo(config), "a lock was left behind after the install"
+
+    @pytest.mark.skipif(not INSTALL_PACKAGE, reason="LIVE_INSTALL_PACKAGE not set (opt-in)")
+    @pytest.mark.parametrize("minimal", [False, True], ids=["adom-lock", "minimal-lock"])
+    def test_package_install_reaches_the_device(self, auth_config, device_alias_restored, minimal):
+        config = dict(auth_config, minimal_locking=minimal)
+        marker = f"lock-test-pkg-{'min' if minimal else 'adom'}"
+        operations["json_rpc_set"](config, {
+            "url": f"/pm/config/device/{MANAGED_DEVICE_NAME}/global/system/global",
+            "data": {"adom": "root", "data": {"alias": marker}}})
+        response, task = _install(config, "/securityconsole/install/package", {
+            "adom": "root", "pkg": INSTALL_PACKAGE,
+            "scope": [{"name": MANAGED_DEVICE_NAME, "vdom": "root"}]})
+        assert response.get("status") == 0, response
+        assert task.get("state") in (4, "done"), task
+        # A package install also installs pending device settings.
+        assert _device_global_alias(config, MANAGED_DEVICE_NAME) == marker
+        assert not _get_lockinfo(config), "a lock was left behind after the install"

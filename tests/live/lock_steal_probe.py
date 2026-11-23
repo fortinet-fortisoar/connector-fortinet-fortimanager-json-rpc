@@ -35,6 +35,9 @@ Usage
 
 import argparse
 import os
+import contextlib
+import shutil
+import tempfile
 import subprocess
 import sys
 import warnings
@@ -76,13 +79,33 @@ def read_marker(fmg, adom, device):
     return response.get("desc") if isinstance(response, dict) else None
 
 
+@contextlib.contextmanager
+def askpass_env(password: str):
+    """Env for plain ssh that takes `password` from an SSH_ASKPASS helper (no external binary).
+
+    The helper prints $SSH_PW, so the password only lives in the child's env and
+    never in argv. The 0700 temp dir holding the helper is removed on exit.
+    """
+    tmp = tempfile.mkdtemp(prefix="askpass-")
+    try:
+        helper = os.path.join(tmp, "askpass")
+        fd = os.open(helper, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o700)
+        with os.fdopen(fd, "w") as fh:
+            fh.write("#!/bin/sh\nprintf '%s\\n' \"$SSH_PW\"\n")
+        yield {**os.environ, "SSH_ASKPASS": helper, "SSH_ASKPASS_REQUIRE": "force",
+               "DISPLAY": os.environ.get("DISPLAY") or ":0", "SSH_PW": password}
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def ssh_command(address, password, command):
-    result = subprocess.run(
-        ["sshpass", "-p", password, "ssh",
-         "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
-         "-o", "PreferredAuthentications=password", "-o", "PubkeyAuthentication=no",
-         "-o", "IdentitiesOnly=yes", f"admin@{address}", command],
-        capture_output=True, text=True, timeout=60)
+    with askpass_env(password) as env:
+        result = subprocess.run(
+            ["ssh",
+             "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
+             "-o", "PreferredAuthentications=password", "-o", "PubkeyAuthentication=no",
+             "-o", "IdentitiesOnly=yes", f"admin@{address}", command],
+            capture_output=True, text=True, timeout=60, env=env)
     return result.stdout
 
 
@@ -160,7 +183,7 @@ def main():
     parser.add_argument("--password", default="")
     parser.add_argument("--api-key", default="")
     parser.add_argument("--ssh-password", default="",
-                        help="enables the SESSION_KILL arm; needs sshpass on PATH")
+                        help="enables the SESSION_KILL arm; needs ssh on PATH (password fed via SSH_ASKPASS)")
     args = parser.parse_args()
 
     connect_args = (args.address, args.username, args.password, args.api_key)

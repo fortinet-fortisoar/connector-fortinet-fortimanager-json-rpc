@@ -5,8 +5,13 @@ Copyright (c) 2024 Fortinet Inc
 Copyright end
 """
 
+import contextlib
+import fcntl
+import hashlib
 import json
+import os
 import random
+import tempfile
 import re
 import time
 from typing import Union
@@ -80,6 +85,12 @@ NO_LOCK_URLS = frozenset({
     "/um/image/version/list/ext",
     "/um/device/list",
     "/um/image/upgrade/status",
+    # Reads a finished preview. Called unlocked while a second session held the ADOM on a
+    # live 7.6.8 appliance it still answered status 0 with its result, but an `adom` in
+    # the payload made the connector lock the ADOM first -- so a caller fetching a
+    # result could only ever wait behind an unrelated writer.
+    # (tests/live/no_lock_urls_contended_probe.py)
+    "/securityconsole/preview/result",
 })
 
 
@@ -136,7 +147,24 @@ def holds_lock_until_task(url: str) -> bool:
 # exist yet the lock URL itself is rejected -10, and for a device that does exist the
 # lock is granted 0 and the delete is still refused -11. Device onboarding therefore
 # serialises per ADOM by the appliance's design, not by a connector shortcoming.
-ADOM_ONLY_URL_PREFIXES = ("/dvm/cmd/",)
+#
+# Device-DB writes (/pm/config/device/<dev>/...) are here too, despite resolving cleanly
+# to a dev/<device> scope. Measured on a live 7.6.8 appliance in workspace mode, writing
+# system global alias through the connector and then running a real install/device,
+# three runs per arm with the gate's own config read back afterwards:
+#
+#   write under dev/<device> lock  -> devdb holds the value, but the device stays
+#                                     db_status "nomod"; install/device then ends
+#                                     "no installing devices/no changes on device" and
+#                                     the change never reaches the FortiGate (5 of 6;
+#                                     the one success followed a run that had already
+#                                     left the device "mod")
+#   write under the ADOM lock      -> db_status "mod", installed 3/3, alias on device
+#
+# The lock mode of the *install* made no difference. A dev-scope write therefore
+# reports status 0 while silently opting out of the next install, so these writes take
+# the ADOM lock. (tests/live/device_install_e2e_probe.py)
+ADOM_ONLY_URL_PREFIXES = ("/dvm/cmd/", "/pm/config/device/", "/pm/config/dev/")
 
 
 def requires_adom_lock(url: str) -> bool:
@@ -213,8 +241,15 @@ def parse_task_timeout(task_timeout, default=120):
     return task_timeout
 
 
+# The ADOM segment may end the URL: /pm/pkg/adom/root (create a package) carries its
+# ADOM as the last segment. The pattern used to require a trailing "/", so such URLs
+# resolved no ADOM and every write to them went out unlocked -- refused in workspace
+# mode with -10147 "no write permission" (measured on a live 7.6.8 appliance).
+ADOM_IN_URL = re.compile(r'/adom/([^/]+)(?:/|$)')
+
+
 def parse_adom_from_input(url: str, data: Union[list, dict]) -> str:
-    match = re.search(r'/adom/([^/]+)/', url)
+    match = ADOM_IN_URL.search(url or "")
     if match:
         return match.group(1)
 
@@ -222,7 +257,7 @@ def parse_adom_from_input(url: str, data: Union[list, dict]) -> str:
     def extract_adom(nested_data):
         if isinstance(nested_data, dict):
             if 'url' in nested_data:
-                nested_match = re.search(r'/adom/([^/]+)/', nested_data['url'])
+                nested_match = ADOM_IN_URL.search(nested_data['url'] or "")
                 if nested_match:
                     return nested_match.group(1)
             if 'adom' in nested_data:
@@ -290,7 +325,12 @@ def parse_track_task_params(params):
 # exist. Everything else (notably -20055 / -20078 / -20079, the contention codes) is worth
 # waiting on. Without this split a mistyped device or package name costs a worker the full
 # MAX_RETRY_LIMIT budget -- ~2.3 hours -- instead of failing immediately.
-PERMANENT_LOCK_FAILURES = frozenset({-6, -10})
+#
+# -11 ("No permission for the resource") is what an ADOM lock on an ADOM that does not
+# exist returns in workspace mode (live-verified on 7.6.8); it is also what a user with no
+# rights to the ADOM gets. Neither changes on a retry. Before it was listed here, a payload
+# naming a missing ADOM retried for the full budget.
+PERMANENT_LOCK_FAILURES = frozenset({-6, -10, -11})
 
 
 def lock_adom(fmg, adom, url, data):
@@ -329,7 +369,8 @@ def lock_adom(fmg, adom, url, data):
         # attempted to be locked. -10 is the same class of permanent rejection; see
         # PERMANENT_LOCK_FAILURES.
         if status in PERMANENT_LOCK_FAILURES:
-            logger.error(f"Lock URL rejected with status {status}. ADOM: {adom} does not exist.")
+            logger.error(f"Lock URL rejected with status {status}. ADOM: {adom} does not exist "
+                         f"or this user has no permission on it.")
             return False
         if attempt < MAX_RETRY_LIMIT - 1:
             # Sleep for a random amount of time between 1 and 10 seconds
@@ -530,7 +571,7 @@ def parse_free_form_lock_scope(data: dict, known_packages=None) -> tuple:
     scopes = set()
     for request in requests:
         request_url = request.get("url") if isinstance(request, dict) else None
-        if not request_url:
+        if not request_url or requires_adom_lock(request_url):
             return None, None
         scopes.add(parse_minimal_lock_scope(request_url, known_packages))
 
@@ -615,230 +656,546 @@ def unlock_minimal_scope(fmg, adom: str, scope_type: str, scope_id: str) -> None
         logger.debug(f"Released {scope_type}/{scope_id} lock in ADOM: {adom}.")
 
 
-def handle_special_cases(fmg, url, data, action_response, task_response=None):
-    special_cases = {
-        "/securityconsole/install/preview": {
-            "extra_url": "/securityconsole/preview/result",
-            "action": "execute"
-        },
-        # Add more special cases here as needed
-    }
+def _preview_result_payload(data: dict) -> dict:
+    """
+    Build the /securityconsole/preview/result payload from an install/preview payload.
 
-    if url in special_cases:
-        case = special_cases[url]
-        action_func = getattr(fmg, case["action"])
-        status, extra_response = action_func(url=case["extra_url"], **data)
-        return extra_response
-    return None
+    preview/result selects its devices by the same scope[{name, vdom}] the preview took.
+    Measured on a live 7.6.8 appliance after a finished preview task:
+
+      {adom, scope}                 -> 0, the per-device preview text
+      {adom, scope, flags|pkg}      -> 0, same (extra keys are ignored)
+      {adom, device: "<name>"}      -> -1 "no devices"
+      {adom, device: [{name,...}]}  -> -1 "no devices"
+      {adom}                        -> -1 "no devices"
+
+    So only adom and scope are sent. A bare "device" name is accepted as shorthand and
+    turned into a one-entry scope, since that form is otherwise silently useless.
+    """
+    payload = {"adom": data.get("adom")}
+    scope = data.get("scope")
+    if not scope and isinstance(data.get("device"), str) and data["device"]:
+        scope = [{"name": data["device"], "vdom": data.get("vdom") or "root"}]
+    if scope:
+        payload["scope"] = scope
+    return payload
+
+
+def _preview_install(fmg, data: dict, track_params: dict) -> dict:
+    """
+    Run the preview-flagged install that install/preview reports on, in this session.
+
+    FMG keeps preview state per JSON-RPC session. Measured on a live 7.6.8 appliance
+    with a staged device-DB change:
+
+      install(flags=preview) + install/preview + preview/result, one session
+          -> "=== Preview result ===" with the diff
+      install(flags=preview) in session A, install/preview + result in session B
+          -> "=== No preview result ===", even while A is still logged in
+
+    The connector logs in fresh for every operation, so a playbook that runs the
+    preview install as its own step can never see a diff. Running it here makes one
+    install/preview call return the real preview. flags=["preview"] writes nothing to
+    the device (verified: the FortiGate's config was unchanged afterwards).
+
+    A payload naming a policy package previews a package install; otherwise a device
+    install. In workspace mode the package preview needs the package lock, held across
+    its task (measured: unlocked, the task fails "no write permission"); the device
+    preview install runs unlocked in either mode.
+    """
+    adom = data.get("adom")
+    payload = {"adom": adom, "scope": data.get("scope"), "flags": ["preview"]}
+    package = data.get("pkg") or data.get("package")
+    if package:
+        url, payload["pkg"] = "/securityconsole/install/package", package
+    else:
+        url = "/securityconsole/install/device"
+
+    lock_pkg = None
+    if package and fmg._lock_ctx.uses_workspace and adom_is_lockable(adom):
+        lock_pkg = resolve_package_path(package, list_adom_packages(fmg, adom)) or package
+        if not lock_minimal_scope(fmg, adom, "pkg", lock_pkg, url, payload):
+            return {"url": url, "status": -1,
+                    "error": f"could not lock pkg/{lock_pkg} in ADOM {adom} for the preview"}
+    try:
+        status, response = fmg.execute(url=url, **payload)
+        task = response.get("task") if isinstance(response, dict) else None
+        if status != 0 or not task:
+            return {"url": url, "status": status if status != 0 else -1, "response": response}
+        track_status, task_response = fmg.track_task(task, **track_params)
+    except Exception as prepare_error:
+        logger.error(f"Preview install {url} failed: {prepare_error}")
+        return {"url": url, "status": -1, "error": str(prepare_error)}
+    finally:
+        if lock_pkg is not None:
+            # A preview writes nothing, so there is nothing to commit; only release.
+            try:
+                unlock_minimal_scope(fmg, adom, "pkg", lock_pkg)
+            except Exception as unlock_error:
+                logger.error(f"Failed to release pkg/{lock_pkg} after the preview: {unlock_error}")
+    # Only a task that ends "done" leaves a preview behind. Measured with another session
+    # holding the device lock: the task ends "warning" ("Lock Device ... failed") and the
+    # result is "No preview result", which used to come back as status 0. With another
+    # session holding the ADOM, the task fails outright ("no write permission").
+    state = task_response.get("state") if isinstance(task_response, dict) else None
+    if track_status not in (0, None) or state not in (4, "done"):
+        details = [line.get("detail") for line in (task_response or {}).get("line", [])
+                   if isinstance(line, dict)] if isinstance(task_response, dict) else []
+        return {"url": url, "status": track_status or -1, "task_response": task_response,
+                "error": f"preview install ended {state!r}: {details}"}
+    return {"url": url, "status": 0, "task_response": task_response}
+
+
+# Calls that only mean something once a follow-up call collects their result. The
+# follow-up runs after the first call's task has finished, so every entry forces task
+# tracking even when the caller did not ask for it -- a preview without its result is
+# just a task id. "prepare", when present, runs before the call itself, in the same
+# session.
+SPECIAL_CASES = {
+    "/securityconsole/install/preview": {
+        "prepare": _preview_install,
+        "extra_url": "/securityconsole/preview/result",
+        "action": "execute",
+        "build_payload": _preview_result_payload,
+    },
+}
+
+
+def prepare_special_case(fmg, url, data, track_params) -> Union[dict, None]:
+    """Run a special case's prepare step, if it has one. Returns its report or None."""
+    case = SPECIAL_CASES.get(normalize_url(url))
+    if not case or "prepare" not in case:
+        return None
+    return case["prepare"](fmg, data if isinstance(data, dict) else {}, track_params)
+
+
+def normalize_url(url) -> str:
+    return (url or "").rstrip("/") or (url or "")
+
+
+def has_special_case(url) -> bool:
+    return normalize_url(url) in SPECIAL_CASES
+
+
+def task_failed(track_status, task_response) -> bool:
+    """True when the tracked task reports failure (state 5 / "error") or tracking failed."""
+    if track_status not in (0, None):
+        return True
+    if isinstance(task_response, dict):
+        return task_response.get("state") in (5, "error")
+    return False
+
+
+def handle_special_cases(fmg, url, data, track_status, task_response) -> Union[dict, None]:
+    """
+    Run the follow-up call for a URL in SPECIAL_CASES.
+
+    Returns None when the URL has no special case. Otherwise returns
+    {"status": int|None, "response": ..., "skipped"/"error": str} so the caller can tell
+    a result from a failure; the follow-up never raises, because the main call and its
+    task have already succeeded by the time it runs.
+    """
+    case = SPECIAL_CASES.get(normalize_url(url))
+    if case is None:
+        return None
+    if task_failed(track_status, task_response):
+        return {"status": None, "response": None,
+                "skipped": "the task did not finish successfully, so there is no result to fetch"}
+    payload = case["build_payload"](data if isinstance(data, dict) else {})
+    try:
+        status, extra_response = getattr(fmg, case["action"])(url=case["extra_url"], **payload)
+    except Exception as follow_up_error:
+        logger.error(f"Follow-up {case['extra_url']} for {url} failed: {follow_up_error}")
+        return {"status": None, "response": None, "error": str(follow_up_error)}
+    if status != 0:
+        logger.warning(f"Follow-up {case['extra_url']} for {url} returned status {status}.")
+    return {"status": status, "response": extra_response}
+
+
+# ---------------------------------------------------------------------------
+# API-key workspace serialisation
+# ---------------------------------------------------------------------------
+# FMG treats every request made with one API key as ONE session (live-verified on
+# 7.6.8: the same lock_sid whichever client sends it). Workspace locks are owned by
+# that session, so two workers on the same key both "acquire" an ADOM lock (status 0
+# instead of -20055), and either one's unlock releases the other's -- measured
+# through this connector as a cross-package write failing -10147 mid-flight. FMG
+# cannot arbitrate between them, so the connector does: every workspace-locking call
+# made with an API key first takes an OS file lock keyed on (host, key, ADOM) and
+# holds it until the FMG session has closed. ADOM granularity is deliberate even with
+# minimal locking -- a package unlock by one worker would otherwise still be able to
+# land while a sibling's ADOM-level commit is in flight.
+#
+# Where the lock lives: a Postgres advisory lock in FortiSOAR's own database when the
+# connector runs inside FortiSOAR, else an OS file lock. In an active-active cluster
+# every node's integrations service connects to the PRIMARY's Postgres (live-verified
+# on a three-node 8.0.1 cluster: a secondary's connector code reports the primary's
+# address, pg_is_in_recovery() false), so an advisory lock taken on one node blocks
+# the same key on every other node -- measured: a second node waited the full hold
+# and acquired 0.2s after release. Advisory locks belong to the DB connection, so a
+# crashed worker cannot strand one; and integrations runs with CONN_MAX_AGE=0, so the
+# connection (and any lock) is closed at the end of every request regardless. The
+# file lock is the fallback for a remote agent or any run without a FortiSOAR DB; it
+# only serialises workers on one host.
+API_KEY_LOCK_TIMEOUT = 3600   # seconds a worker waits for a sibling on the same key
+API_KEY_LOCK_POLL = 0.5
+API_KEY_LOCK_DIR_ENV = "FMG_JSONRPC_LOCK_DIR"
+
+
+def api_key_lock_path(server_host: str, api_key: str, adom: str) -> str:
+    """Lock-file path for one (FMG host, API key, ADOM). The key itself never hits disk."""
+    digest = hashlib.sha256(f"{server_host}|{api_key}|{adom}".encode()).hexdigest()[:32]
+    directory = os.environ.get(API_KEY_LOCK_DIR_ENV) or tempfile.gettempdir()
+    return os.path.join(directory, f"fmg-jsonrpc-ws-{digest}.lock")
+
+
+def api_key_lock_id(server_host: str, api_key: str, adom: str) -> int:
+    """Signed 64-bit advisory-lock id for one (FMG host, API key, ADOM)."""
+    digest = hashlib.sha256(f"fmg-jsonrpc-ws|{server_host}|{api_key}|{adom}".encode()).digest()
+    return int.from_bytes(digest[:8], "big", signed=True)
+
+
+def _fortisoar_db_connection():
+    """FortiSOAR's Django DB connection when it is a usable Postgres, else None."""
+    try:
+        from django.db import connection
+        if connection.vendor != "postgresql":
+            return None
+        connection.ensure_connection()
+        return connection
+    except Exception as error:  # no Django, not configured, or DB unreachable
+        logger.debug(f"No FortiSOAR database for the API-key lock ({error}); using a file lock.")
+        return None
+
+
+@contextlib.contextmanager
+def _advisory_lock(connection, lock_id: int, adom: str, timeout: float):
+    started = time.monotonic()
+    waited_logged = False
+    with connection.cursor() as cursor:
+        while True:
+            cursor.execute("SELECT pg_try_advisory_lock(%s)", [lock_id])
+            if cursor.fetchone()[0]:
+                break
+            if time.monotonic() - started >= timeout:
+                raise ConnectorError(
+                    f"Timed out after {timeout:.0f}s waiting for another worker using the "
+                    f"same API key to finish in ADOM: {adom}.")
+            if not waited_logged:
+                logger.info(
+                    f"Another worker with this API key is working in ADOM: {adom}; "
+                    "waiting for it (FMG gives one key one shared workspace session).")
+                waited_logged = True
+            time.sleep(API_KEY_LOCK_POLL)
+    logger.debug(f"Holding API-key advisory lock for ADOM: {adom} "
+                 f"(waited {time.monotonic() - started:.2f}s).")
+    try:
+        yield
+    finally:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT pg_advisory_unlock(%s)", [lock_id])
+        except Exception as error:
+            # The lock dies with the connection, which FortiSOAR closes at the end of
+            # the request, so a failed unlock delays other workers but cannot strand them.
+            logger.error(f"Failed to release the API-key advisory lock for ADOM: {adom}: {error}")
+
+
+@contextlib.contextmanager
+def api_key_workspace_lock(server_host: str, api_key: str, adom: str,
+                           timeout: float = None):
+    """Serialise workers that share one API key in one ADOM, cluster-wide when possible."""
+    timeout = API_KEY_LOCK_TIMEOUT if timeout is None else timeout
+    connection = _fortisoar_db_connection()
+    if connection is not None:
+        with _advisory_lock(connection, api_key_lock_id(server_host, api_key, adom), adom, timeout):
+            yield
+    else:
+        with _file_lock(server_host, api_key, adom, timeout):
+            yield
+
+
+@contextlib.contextmanager
+def _file_lock(server_host: str, api_key: str, adom: str, timeout: float = None):
+    """Hold an exclusive flock so only one worker per API key works in an ADOM at a time.
+
+    flock is released by the kernel when the holder exits, so a crashed worker can
+    never leave the file locked.
+    """
+    timeout = API_KEY_LOCK_TIMEOUT if timeout is None else timeout
+    path = api_key_lock_path(server_host, api_key, adom)
+    handle = open(path, "a+")
+    try:
+        started = time.monotonic()
+        waited_logged = False
+        while True:
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() - started >= timeout:
+                    raise ConnectorError(
+                        f"Timed out after {timeout:.0f}s waiting for another worker using the "
+                        f"same API key to finish in ADOM: {adom}.")
+                if not waited_logged:
+                    logger.info(
+                        f"Another worker with this API key is working in ADOM: {adom}; "
+                        "waiting for it (FMG gives one key one shared workspace session).")
+                    waited_logged = True
+                time.sleep(API_KEY_LOCK_POLL)
+        logger.debug(f"Holding API-key workspace file lock for ADOM: {adom} "
+                     f"(waited {time.monotonic() - started:.2f}s).")
+        yield
+    finally:
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        finally:
+            handle.close()
 
 
 def perform_rpc_action(action: str, config: dict, params: dict) -> dict:
     server_host, username, password, api_key, verify_ssl = get_config(config)
     try:
-        with FortiManager(server_host, username, password, apikey=api_key, verify_ssl=verify_ssl,
-                          debug=config.get("debug_connection", False),
-                          verbose=config.get("verbose_json", True), disable_request_warnings=True) as fmg:
-            action_func = getattr(fmg, action)
-            data = parse_data(params.get("data", {}))
-            url = params.get("url")
-            # To handle locking ADOM's when freeform action is used, I will pick the first url found and lock that adom.
-            if action == "free_form":
-                # make sure data is a list before accessing the first instance
-                if not isinstance(data.get("data", None), list):
-                    raise ConnectorError("Payload must be a list")
-                url = data["data"][0].get("url", url)
-            adom = parse_adom_from_input(url, data)
-            response = {}
-
-            # Determine whether a workspace lock is needed for this request.
-            # Read-only (get) actions and URLs in NO_LOCK_URLS never require a lock.
-            needs_lock = (
-                action not in ["get"]
-                and fmg._lock_ctx.uses_workspace
-                and url not in NO_LOCK_URLS
-                and not requests_server_side_lock(data)
-            )
-
-            # Name the reason. "Did this call lock, and if not why not?" is the first
-            # question asked when a workspace goes wrong, and until this line the
-            # no-lock path was entirely silent in the log.
-            if not needs_lock:
-                if action == "get":
-                    skip_reason = "read-only get action"
-                elif not fmg._lock_ctx.uses_workspace:
-                    skip_reason = "workspace mode is not enabled on this appliance"
-                elif url in NO_LOCK_URLS:
-                    skip_reason = "URL is exempt (read-only or locks server-side)"
-                else:
-                    skip_reason = "payload asked FMG to lock server-side (auto_lock_ws)"
-                logger.debug(f"No workspace lock taken for URL: {url} -- {skip_reason}.")
-
-            # An ADOM that cannot be locked is not the same as an operation that needs
-            # no lock. Say so once, here, and proceed unlocked -- global-ADOM writes are
-            # accepted unlocked on 7.6.7, and there is no lock URL to take for them.
-            if needs_lock and not adom_is_lockable(adom):
-                logger.warning(
-                    f"No lockable ADOM resolved (adom={adom!r}) for URL: {url}. "
-                    "Proceeding without a workspace lock; pass an explicit adom if this "
-                    "request writes to a lockable ADOM.")
-                needs_lock = False
-
-            # Resolve the lock scope. With minimal_locking enabled the connector
-            # attempts to lock only the policy package or device referenced in the
-            # URL instead of the entire ADOM, reducing contention in environments
-            # with concurrent automation workers. Falls back to ADOM-level locking
-            # when no finer scope can be parsed, or when the ADOM is "global".
-            scope_type, scope_id = None, None
-            if needs_lock and config.get("minimal_locking", False) and not requires_adom_lock(url):
-                # Ask the appliance for the ADOM's package paths so packages nested in
-                # folders resolve to the path FMG actually accepts in a lock URL. Only
-                # worth the extra call when a package could actually be involved.
-                names_package = "/pkg/" in (url or "") or bool(
-                    isinstance(data, dict) and (data.get("package") or data.get("pkg")
-                                                or single_target_package(data)))
-                known_packages = list_adom_packages(fmg, adom) if names_package else []
-
+        # Outer stack: anything entered here is released AFTER the FMG session below has
+        # closed -- pyFMG unlocks ADOMs on __exit__, so the API-key file lock must outlive it.
+        with contextlib.ExitStack() as after_session:
+            with FortiManager(server_host, username, password, apikey=api_key, verify_ssl=verify_ssl,
+                              debug=config.get("debug_connection", False),
+                              verbose=config.get("verbose_json", True), disable_request_warnings=True) as fmg:
+                action_func = getattr(fmg, action)
+                data = parse_data(params.get("data", {}))
+                url = params.get("url")
+                # To handle locking ADOM's when freeform action is used, I will pick the first url found and lock that adom.
                 if action == "free_form":
-                    scope_type, scope_id = parse_free_form_lock_scope(data, known_packages)
-                else:
-                    scope_type, scope_id = parse_minimal_lock_scope(url, known_packages)
-                    if scope_type is None:
-                        # Nothing in the URL, but the body may still name the single
-                        # package or device the request touches.
-                        scope_type, scope_id = parse_payload_lock_scope(data, known_packages)
+                    # make sure data is a list before accessing the first instance
+                    if not isinstance(data.get("data", None), list):
+                        raise ConnectorError("Payload must be a list")
+                    url = data["data"][0].get("url", url)
+                adom = parse_adom_from_input(url, data)
+                response = {}
 
-            lock_acquired_at = None
-            adom_released_here = False
-            if needs_lock:
-                if config.get("minimal_locking", False) and scope_type is None:
-                    # Minimal locking was asked for but nothing finer than the ADOM could
-                    # be resolved. That is the difference between a worker running beside
-                    # its peers and one serialising them, so it should never be silent.
-                    logger.info(
-                        f"Minimal locking is enabled but no package or device scope could be "
-                        f"resolved for URL: {url}. Falling back to locking the whole ADOM: {adom}.")
-                lock_acquired_at = time.monotonic()
-                if scope_type is not None:
-                    if not lock_minimal_scope(fmg, adom, scope_type, scope_id, url, data):
-                        raise ConnectorError(
-                            f"Failed to acquire minimal lock for {scope_type}/{scope_id} in ADOM: {adom}"
-                        )
-                else:
-                    if not lock_adom(fmg, adom, url, data):
-                        raise ConnectorError(f"Failed to lock ADOM: {adom}")
+                # Determine whether a workspace lock is needed for this request.
+                # Read-only (get) actions and URLs in NO_LOCK_URLS never require a lock.
+                needs_lock = (
+                    action not in ["get"]
+                    and fmg._lock_ctx.uses_workspace
+                    and url not in NO_LOCK_URLS
+                    and not requests_server_side_lock(data)
+                )
 
-            # Minimal-scope locks are taken with execute(), so pyFMG's __exit__ does
-            # not know about them and will not release them the way it releases ADOMs
-            # registered through lock_adom(). Without a finally the lock survives any
-            # mid-flight failure and blocks every other worker on that package or
-            # device, so the release is guaranteed here instead.
-            minimal_lock_held = needs_lock and scope_type is not None
-            try:
-                if action == "free_form":
-                    method = params.get("method")
-                    status, action_response = action_func(method, **data)
-                else:
-                    status, action_response = action_func(url=url, **data)
-
-                if needs_lock and scope_type is None:
-                    fmg.commit_changes(adom)
-                    # Deliberately no unlock here. Releasing at this point is unsafe for
-                    # the install URLs: the queued task copies config to the device after
-                    # the RPC returns, and dropping the lock mid-copy lets another worker
-                    # write the ADOM underneath a running install -- which is why
-                    # HOLD_LOCK_UNTIL_TASK_URLS exists. For every other URL the release
-                    # happens a few statements later (or at session teardown, which pyFMG
-                    # does on __exit__), so an early unlock here would buy back only the
-                    # duration of the task-tracking block while adding that hazard.
-                elif minimal_lock_held:
-                    commit_minimal_scope(fmg, adom, scope_type, scope_id)
-
-                response[f"{action}_response"] = action_response
-                # If the action is execute and track_task is set to True, track the task
-                # Also need to make sure that the response is a dict because some exec actions like sys/proxy/info can return a list
-                # Installs need the lock held while the queued task copies to the
-                # device, so for those URLs the task is followed here whether or not the
-                # caller asked for tracking -- the release below must not happen first.
-                track_requested = bool(params.get("track_task", False))
-                hold_until_task = needs_lock and holds_lock_until_task(url)
-                if action == 'execute' and (track_requested or hold_until_task) and isinstance(action_response, dict):
-                    task = action_response.get('task') or action_response.get('taskid')
-                    # handle case where no task id is found and there is an attempt to track task
-                    if not task and not track_requested:
-                        # Nothing to wait on and the caller never asked for a task, so
-                        # there is no lock-lifetime problem and nothing to report.
-                        pass
-                    elif not task:
-                        response["task_response"] = None
-                        # Surface the FMG status message (e.g. "No devices") when present,
-                        # so callers know *why* no task was created instead of a generic
-                        # "no task id" message.
-                        fmg_status = action_response.get('status')
-                        if fmg_status and fmg_status not in ('Success', 'OK', 0, '0'):
-                            response["error"] = "FMG returned status '{status}' with no task id (track_task=True).".format(status=fmg_status)
-                        else:
-                            response["error"] = "No task id found in execute_response and track_task is set to True."
+                # Name the reason. "Did this call lock, and if not why not?" is the first
+                # question asked when a workspace goes wrong, and until this line the
+                # no-lock path was entirely silent in the log.
+                if not needs_lock:
+                    if action == "get":
+                        skip_reason = "read-only get action"
+                    elif not fmg._lock_ctx.uses_workspace:
+                        skip_reason = "workspace mode is not enabled on this appliance"
+                    elif url in NO_LOCK_URLS:
+                        skip_reason = "URL is exempt (read-only or locks server-side)"
                     else:
-                        track_task_params = parse_track_task_params(params)
-                        track_status, task_response = fmg.track_task(task, **track_task_params)
-                        response["task_response"] = task_response
-                        # A caller who did not ask for tracking still gets the task
-                        # outcome -- it is how an install reports failure -- but keeps
-                        # the RPC's own status as the top-level one.
-                        if track_requested:
-                            status = track_status
+                        skip_reason = "payload asked FMG to lock server-side (auto_lock_ws)"
+                    logger.debug(f"No workspace lock taken for URL: {url} -- {skip_reason}.")
 
-                        # Handle special cases. Putting this here because the task needs to be tracked first for exec actions
-                        special_case_result = handle_special_cases(fmg, url, data, action_response, task_response)
-                        if special_case_result:
-                            response["special_case_response"] = special_case_result
+                # An ADOM that cannot be locked is not the same as an operation that needs
+                # no lock. Say so once, here, and proceed unlocked -- global-ADOM writes are
+                # accepted unlocked on 7.6.7, and there is no lock URL to take for them.
+                if needs_lock and not adom_is_lockable(adom):
+                    logger.warning(
+                        f"No lockable ADOM resolved (adom={adom!r}) for URL: {url}. "
+                        "Proceeding without a workspace lock; pass an explicit adom if this "
+                        "request writes to a lockable ADOM.")
+                    needs_lock = False
 
-                    # The commit is redundant in the common case -- the write was already
-                    # committed above and a queued task does not add ADOM changes of its
-                    # own -- but it is safe to repeat: workspace/commit is idempotent,
-                    # returning status 0 with nothing pending and even with no lock held.
-                    # It is kept because the special-case handlers above can write, and
-                    # costs one round trip. Note the corollary: a commit returning 0 is
-                    # not evidence that a write landed, so never judge one by its status.
-                    # The minimal-scope path already committed above and commits again on
-                    # release, so only the ADOM path needs the extra commit/unlock here.
+                # Resolve the lock scope. With minimal_locking enabled the connector
+                # attempts to lock only the policy package or device referenced in the
+                # URL instead of the entire ADOM, reducing contention in environments
+                # with concurrent automation workers. Falls back to ADOM-level locking
+                # when no finer scope can be parsed, or when the ADOM is "global".
+                scope_type, scope_id = None, None
+                if needs_lock and config.get("minimal_locking", False) and not requires_adom_lock(url):
+                    # Ask the appliance for the ADOM's package paths so packages nested in
+                    # folders resolve to the path FMG actually accepts in a lock URL. Only
+                    # worth the extra call when a package could actually be involved.
+                    names_package = "/pkg/" in (url or "") or bool(
+                        isinstance(data, dict) and (data.get("package") or data.get("pkg")
+                                                    or single_target_package(data)))
+                    known_packages = list_adom_packages(fmg, adom) if names_package else []
+
+                    if action == "free_form":
+                        scope_type, scope_id = parse_free_form_lock_scope(data, known_packages)
+                    else:
+                        scope_type, scope_id = parse_minimal_lock_scope(url, known_packages)
+                        if scope_type is None:
+                            # Nothing in the URL, but the body may still name the single
+                            # package or device the request touches.
+                            scope_type, scope_id = parse_payload_lock_scope(data, known_packages)
+
+                lock_acquired_at = None
+                adom_released_here = False
+                # The preview special case takes its own package lock in its prepare step,
+                # so it shares the key's workspace session too.
+                locks_workspace = needs_lock or (
+                    action == "execute" and has_special_case(url)
+                    and fmg._lock_ctx.uses_workspace and adom_is_lockable(adom))
+                if locks_workspace and api_key:
+                    after_session.enter_context(api_key_workspace_lock(server_host, api_key, adom))
+                if needs_lock:
+                    if config.get("minimal_locking", False) and scope_type is None:
+                        # Minimal locking was asked for but nothing finer than the ADOM could
+                        # be resolved. That is the difference between a worker running beside
+                        # its peers and one serialising them, so it should never be silent.
+                        logger.info(
+                            f"Minimal locking is enabled but no package or device scope could be "
+                            f"resolved for URL: {url}. Falling back to locking the whole ADOM: {adom}.")
+                    lock_acquired_at = time.monotonic()
+                    if scope_type is not None:
+                        if not lock_minimal_scope(fmg, adom, scope_type, scope_id, url, data):
+                            raise ConnectorError(
+                                f"Failed to acquire minimal lock for {scope_type}/{scope_id} in ADOM: {adom}"
+                            )
+                    else:
+                        if not lock_adom(fmg, adom, url, data):
+                            raise ConnectorError(f"Failed to lock ADOM: {adom}")
+
+                # Minimal-scope locks are taken with execute(), so pyFMG's __exit__ does
+                # not know about them and will not release them the way it releases ADOMs
+                # registered through lock_adom(). Without a finally the lock survives any
+                # mid-flight failure and blocks every other worker on that package or
+                # device, so the release is guaranteed here instead.
+                minimal_lock_held = needs_lock and scope_type is not None
+                try:
+                    prepare = None
+                    if action == "execute" and has_special_case(url):
+                        prepare = prepare_special_case(fmg, url, data, parse_track_task_params(params))
+                        if prepare is not None:
+                            response["special_case_prepare"] = prepare
+
+                    if action == "free_form":
+                        method = params.get("method")
+                        status, action_response = action_func(method, **data)
+                    else:
+                        status, action_response = action_func(url=url, **data)
+
                     if needs_lock and scope_type is None:
                         fmg.commit_changes(adom)
-                        fmg.unlock_adom(adom)
-                        adom_released_here = True
-                        logger.debug(
-                            f"Released ADOM lock: {adom} after tracking the task "
-                            f"({_held_for(lock_acquired_at)}).")
-            finally:
-                if minimal_lock_held:
-                    # Releasing as early as possible keeps other workers moving. Errors are
-                    # logged rather than raised so a failed unlock cannot mask the real
-                    # exception that sent us into this finally block.
-                    try:
-                        unlock_minimal_scope(fmg, adom, scope_type, scope_id)
-                    except Exception as unlock_error:
-                        logger.error(
-                            f"Failed to release minimal lock for {scope_type}/{scope_id} "
-                            f"in ADOM: {adom}: {unlock_error}"
-                        )
-                # Hold time is the number this whole lock-scoping effort is about: it is
-                # what other workers wait on. Emit it once per call so a slow workspace
-                # can be diagnosed from the log alone, without re-running a probe.
-                if lock_acquired_at is not None:
-                    scope_label = f"{scope_type}/{scope_id}" if scope_type else f"adom/{adom}"
-                    # Minimal scopes are released just above, and the ADOM is released
-                    # explicitly only on the task-tracking path. Otherwise pyFMG drops it
-                    # when the session closes, moments after this line -- so report that
-                    # rather than implying the lock is already free.
-                    if scope_type is not None or adom_released_here:
-                        tail = "released"
-                    else:
-                        tail = "released when the session closes, shortly after this"
-                    logger.info(f"Workspace lock {scope_label} held for "
-                                f"{_held_for(lock_acquired_at)} on URL: {url} ({tail}).")
+                        # Deliberately no unlock here. Releasing at this point is unsafe for
+                        # the install URLs: the queued task copies config to the device after
+                        # the RPC returns, and dropping the lock mid-copy lets another worker
+                        # write the ADOM underneath a running install -- which is why
+                        # HOLD_LOCK_UNTIL_TASK_URLS exists. For every other URL the release
+                        # happens a few statements later (or at session teardown, which pyFMG
+                        # does on __exit__), so an early unlock here would buy back only the
+                        # duration of the task-tracking block while adding that hazard.
+                    elif minimal_lock_held:
+                        commit_minimal_scope(fmg, adom, scope_type, scope_id)
 
-            response["status"] = status
-            logger.debug(response)
-            return response
+                    response[f"{action}_response"] = action_response
+                    # If the action is execute and track_task is set to True, track the task
+                    # Also need to make sure that the response is a dict because some exec actions like sys/proxy/info can return a list
+                    # Installs need the lock held while the queued task copies to the
+                    # device, so for those URLs the task is followed here whether or not the
+                    # caller asked for tracking -- the release below must not happen first.
+                    track_requested = bool(params.get("track_task", False))
+                    hold_until_task = needs_lock and holds_lock_until_task(url)
+                    # A special case's follow-up needs the finished task, so it forces
+                    # tracking the same way an install's lock does.
+                    follow_up = action == 'execute' and has_special_case(url)
+                    if action == 'execute' and (track_requested or hold_until_task or follow_up) and isinstance(action_response, dict):
+                        task = action_response.get('task') or action_response.get('taskid')
+                        # handle case where no task id is found and there is an attempt to track task
+                        if not task and not track_requested:
+                            # Nothing to wait on and the caller never asked for a task, so
+                            # there is no lock-lifetime problem and nothing to report.
+                            pass
+                        elif not task:
+                            response["task_response"] = None
+                            # Surface the FMG status message (e.g. "No devices") when present,
+                            # so callers know *why* no task was created instead of a generic
+                            # "no task id" message.
+                            fmg_status = action_response.get('status')
+                            if fmg_status and fmg_status not in ('Success', 'OK', 0, '0'):
+                                response["error"] = "FMG returned status '{status}' with no task id (track_task=True).".format(status=fmg_status)
+                            else:
+                                response["error"] = "No task id found in execute_response and track_task is set to True."
+                        else:
+                            track_task_params = parse_track_task_params(params)
+                            track_status, task_response = fmg.track_task(task, **track_task_params)
+                            response["task_response"] = task_response
+                            # A caller who did not ask for tracking still gets the task
+                            # outcome -- it is how an install reports failure -- but keeps
+                            # the RPC's own status as the top-level one.
+                            if track_requested:
+                                status = track_status
+
+                            # Special cases run here because they need the finished task.
+                            # The result is always reported, failures included, and a failed
+                            # follow-up turns a successful top-level status into its own.
+                            special = handle_special_cases(fmg, url, data, track_status, task_response)
+                            if special is not None:
+                                response["special_case_response"] = special["response"]
+                                response["special_case_status"] = special["status"]
+                                for key in ("skipped", "error"):
+                                    if key in special:
+                                        response[f"special_case_{key}"] = special[key]
+                                # The follow-up's result is the point of a special case, so
+                                # a call that produced none fails even when the caller did not
+                                # ask for task tracking (measured: an install/preview task that
+                                # ends state 5 "Internal error" otherwise returned status 0).
+                                if status == 0 and special["status"] not in (0, None):
+                                    status = special["status"]
+                                elif status == 0 and ("error" in special or "skipped" in special):
+                                    status = -1
+
+                        # The commit is redundant in the common case -- the write was already
+                        # committed above and a queued task does not add ADOM changes of its
+                        # own -- but it is safe to repeat: workspace/commit is idempotent,
+                        # returning status 0 with nothing pending and even with no lock held.
+                        # It is kept as cheap insurance (one round trip). Note the corollary: a commit returning 0 is
+                        # not evidence that a write landed, so never judge one by its status.
+                        # The minimal-scope path already committed above and commits again on
+                        # release, so only the ADOM path needs the extra commit/unlock here.
+                        if needs_lock and scope_type is None:
+                            fmg.commit_changes(adom)
+                            fmg.unlock_adom(adom)
+                            adom_released_here = True
+                            logger.debug(
+                                f"Released ADOM lock: {adom} after tracking the task "
+                                f"({_held_for(lock_acquired_at)}).")
+                finally:
+                    if minimal_lock_held:
+                        # Releasing as early as possible keeps other workers moving. Errors are
+                        # logged rather than raised so a failed unlock cannot mask the real
+                        # exception that sent us into this finally block.
+                        try:
+                            unlock_minimal_scope(fmg, adom, scope_type, scope_id)
+                        except Exception as unlock_error:
+                            logger.error(
+                                f"Failed to release minimal lock for {scope_type}/{scope_id} "
+                                f"in ADOM: {adom}: {unlock_error}"
+                            )
+                    # Hold time is the number this whole lock-scoping effort is about: it is
+                    # what other workers wait on. Emit it once per call so a slow workspace
+                    # can be diagnosed from the log alone, without re-running a probe.
+                    if lock_acquired_at is not None:
+                        scope_label = f"{scope_type}/{scope_id}" if scope_type else f"adom/{adom}"
+                        # Minimal scopes are released just above, and the ADOM is released
+                        # explicitly only on the task-tracking path. Otherwise pyFMG drops it
+                        # when the session closes, moments after this line -- so report that
+                        # rather than implying the lock is already free.
+                        if scope_type is not None or adom_released_here:
+                            tail = "released"
+                        else:
+                            tail = "released when the session closes, shortly after this"
+                        logger.info(f"Workspace lock {scope_label} held for "
+                                    f"{_held_for(lock_acquired_at)} on URL: {url} ({tail}).")
+
+                # A failed preview install leaves nothing to preview; the result call then
+                # reports "No preview result" with status 0, so the failure must win here.
+                if status == 0 and prepare and prepare.get("status") not in (0, None):
+                    status = prepare["status"]
+                response["status"] = status
+                logger.debug(response)
+                return response
     except Exception as e:
         raise ConnectorError(e)

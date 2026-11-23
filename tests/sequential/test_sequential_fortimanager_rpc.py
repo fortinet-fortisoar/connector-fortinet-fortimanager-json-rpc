@@ -470,28 +470,35 @@ def test_rpc_freeform(auth_config):
 
 
 def test_special_case(auth_config):
-    params = {
-        "url": "/securityconsole/install/preview",
-        "data": {
-            "adom": "root",
-            "scope": [
-                {
-                    "name": "FGT2",
-                    "vdom": "root"
-                }
-            ]
-        },
-        "track_task": True,
-        "task_timeout": 120
-    }
-    response = operations['json_rpc_execute'](auth_config, params)
-    # Status should be 0 for success
-    assert response.get("status", None) == 0
+    """One install/preview call returns the real preview, staged change included.
 
-    assert "execute_response" in response, "Response missing 'execute_response' key"
+    FMG keeps preview state per JSON-RPC session, so the connector runs the
+    preview-flagged install itself before the preview, in the same session. A staged
+    device-DB alias must therefore appear in the returned diff. Nothing is installed.
+    """
+    device = os.getenv("LIVE_FGT_DEVICE_NAME", "FGT2")
+    global_url = f"/pm/config/device/{device}/global/system/global"
+    scope = [{"name": device, "vdom": "root"}]
+    marker = "preview-probe"
 
-    assert "task_response" in response, "Response missing 'task_response' key"
+    original = operations['json_rpc_get'](
+        auth_config, {"url": global_url, "data": {"fields": ["alias"]}})["get_response"].get("alias", "")
+    operations['json_rpc_set'](auth_config, {"url": global_url, "data": {"adom": "root", "data": {"alias": marker}}})
+    try:
+        response = operations['json_rpc_execute'](auth_config, {
+            "url": "/securityconsole/install/preview",
+            "data": {"adom": "root", "scope": scope},
+            "task_timeout": 120,
+        })
+    finally:
+        operations['json_rpc_set'](auth_config, {"url": global_url, "data": {"adom": "root", "data": {"alias": original}}})
+        operations['json_rpc_execute'](auth_config, {
+            "url": "/securityconsole/package/cancel/install",
+            "data": {"adom": "root", "scope": scope}})
 
-    assert "special_case_response" in response, "Response missing 'special_case_response' key"
-    special_case_response = response.get("special_case_response", {})
-    assert "message" in special_case_response, "Response missing 'message' key"
+    assert response.get("status") == 0, response
+    assert response["special_case_prepare"]["status"] == 0, response["special_case_prepare"]
+    assert response.get("special_case_status") == 0, response.get("special_case_response")
+    preview_text = str(response.get("special_case_response"))
+    assert "=== Preview result ===" in preview_text, preview_text
+    assert marker in preview_text, "staged change missing from the preview"
