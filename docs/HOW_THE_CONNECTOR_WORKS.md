@@ -49,6 +49,14 @@ The connector does:
      the payload, and nested package folders are resolved against the ADOM's real
      package list. When no finer scope can be resolved, the ADOM is locked and the call
      logs that it fell back.
+   - With `per-policy-lock` enabled on the FortiManager, a `set` or `delete` of one
+     firewall policy locks just that policy. Two workers can then edit different policies
+     in one package at the same time, and the same policy still excludes the second one.
+     The commit is made at package level, because a policy-level commit saves nothing.
+     With the setting off, the package is locked as before.
+   - CLI scripts against the device database are fine under a device lock. Unlike
+     direct device-database writes, they mark the device as modified, so the next
+     install picks the change up.
    - Templates, template groups, provisioning profiles, SD-WAN templates, device groups
      and ADOM objects all need the ADOM lock, which was measured live, so they use it.
    - Some URLs always take the ADOM lock, even with Minimal Locking on:

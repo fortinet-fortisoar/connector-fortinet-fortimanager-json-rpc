@@ -728,8 +728,52 @@ def _held_for(started_at) -> str:
     return f"{time.monotonic() - started_at:.2f}s"
 
 
+# ---------------------------------------------------------------------------
+# Per-policy locking
+# ---------------------------------------------------------------------------
+# FortiManager can lock a single firewall policy instead of its whole package, which is
+# the only scope that lets two workers edit the same package at once. Measured on a live
+# 7.6.8 appliance with two password sessions (tests/live/per_policy_lock_probe.py):
+#
+#   GRANTED     /workspace/lock/pkg/<pkg>/firewall/policy/<id> is accepted
+#   AUTHORISES  a write to that policy lands and survives the unlock
+#   SCOPED      a write to a different policy in the package is refused -10147
+#   CONCURRENT  two sessions lock two policies in one package; both writes persist
+#   EXCLUDES    a second session is refused the same policy (-20055), the package
+#               (-20078) and the ADOM (-20055)
+#   FEATURE_OFF with the global per-policy-lock setting disabled the lock URL still
+#               returns 0, and the write is then refused -10147
+#
+# So it is only used when per-policy-lock is enabled, read from the appliance. The commit
+# must be at PACKAGE scope: the policy-scoped commit and the ADOM commit both return 0
+# and save nothing (the edit is discarded at unlock).
+POLICY_IN_URL = re.compile(r'^/pm/config/adom/[^/]+/pkg/.+/firewall/policy/(\d+)(?:/|$)')
+PER_POLICY_ACTIONS = frozenset({"set", "update", "delete"})
+
+
+def per_policy_lock_enabled(fmg) -> bool:
+    status, response = fmg.get("/cli/global/system/global", fields=["per-policy-lock"])
+    value = response.get("per-policy-lock") if status == 0 and isinstance(response, dict) else None
+    return value in (1, "1", "enable", "enabled")
+
+
+def per_policy_scope(action: str, url: str, scope_type, scope_id):
+    """The policy-level scope for a write that names one policy, or None."""
+    if action not in PER_POLICY_ACTIONS or scope_type != "pkg":
+        return None
+    match = POLICY_IN_URL.match(url or "")
+    if not match:
+        return None
+    return f"{scope_id}/firewall/policy/{match.group(1)}"
+
+
 def commit_minimal_scope(fmg, adom: str, scope_type: str, scope_id: str) -> None:
-    """Commit workspace changes at package or device scope."""
+    """Commit workspace changes at package or device scope.
+
+    A policy lock (pkg/<pkg>/firewall/policy/<id>) commits at its package: committing at
+    the policy scope returns 0 and saves nothing.
+    """
+    scope_id = scope_id.split("/firewall/policy/")[0]
     commit_url = f"/dvmdb/adom/{adom}/workspace/commit/{scope_type}/{scope_id}"
     status, _ = fmg.execute(url=commit_url)
     if status != 0:
@@ -1144,6 +1188,9 @@ def perform_rpc_action(action: str, config: dict, params: dict) -> dict:
                             # Nothing in the URL, but the body may still name the single
                             # package or device the request touches.
                             scope_type, scope_id = parse_payload_lock_scope(data, known_packages)
+                    policy_scope = per_policy_scope(action, url, scope_type, scope_id)
+                    if policy_scope and per_policy_lock_enabled(fmg):
+                        scope_id = policy_scope
 
                 lock_acquired_at = None
                 adom_released_here = False

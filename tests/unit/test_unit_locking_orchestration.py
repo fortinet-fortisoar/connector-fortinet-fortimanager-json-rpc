@@ -1260,3 +1260,54 @@ class TestFreeFormBatches:
         response = [{"status": {"code": 0}}, {"status": {"code": -10147}}]
         assert generic_json_rpc.free_form_status(200, response) == -10147
         assert generic_json_rpc.free_form_status(200, [{"status": {"code": 0}}]) == 200
+
+
+class _PerPolicyFMG(FakeFMG):
+    def __init__(self, enabled, **kwargs):
+        super().__init__(**kwargs)
+        self.enabled = enabled
+
+    def get(self, url=None, **kwargs):
+        if url == "/cli/global/system/global":
+            self.calls.append(("get", url))
+            return 0, {"per-policy-lock": "enable" if self.enabled else "disable"}
+        return super().get(url, **kwargs)
+
+
+class TestPerPolicyLocking:
+    """Live-measured: a policy lock admits concurrent edits to other policies in the same
+    package and excludes the same policy; with the global setting off the lock call still
+    succeeds and the write is refused, so it is only used when the setting is on."""
+
+    POLICY_URL = "/pm/config/adom/root/pkg/Pkg1/firewall/policy/25"
+
+    def _workspace(self, fmg):
+        return [u for name, u in fmg.calls if name == "execute" and "/workspace/" in (u or "")]
+
+    def test_policy_lock_when_the_setting_is_on(self):
+        fmg = _PerPolicyFMG(True)
+        run_action(fmg, "set", {"url": self.POLICY_URL, "data": {}}, MINIMAL)
+        assert self._workspace(fmg) == [
+            "/dvmdb/adom/root/workspace/lock/pkg/Pkg1/firewall/policy/25",
+            # the commit that saves is at package scope
+            "/dvmdb/adom/root/workspace/commit/pkg/Pkg1",
+            "/dvmdb/adom/root/workspace/unlock/pkg/Pkg1/firewall/policy/25",
+        ]
+
+    def test_package_lock_when_the_setting_is_off(self):
+        fmg = _PerPolicyFMG(False)
+        run_action(fmg, "set", {"url": self.POLICY_URL, "data": {}}, MINIMAL)
+        assert self._workspace(fmg)[0] == "/dvmdb/adom/root/workspace/lock/pkg/Pkg1"
+
+    def test_adding_a_policy_keeps_the_package_lock(self):
+        # A new policy has no id yet, so there is no policy to lock.
+        fmg = _PerPolicyFMG(True)
+        run_action(fmg, "add", {"url": "/pm/config/adom/root/pkg/Pkg1/firewall/policy", "data": {}}, MINIMAL)
+        assert self._workspace(fmg)[0] == "/dvmdb/adom/root/workspace/lock/pkg/Pkg1"
+        assert ("get", "/cli/global/system/global") not in fmg.calls
+
+    def test_nested_package_policy_scope(self):
+        assert generic_json_rpc.per_policy_scope(
+            "update", "/pm/config/adom/root/pkg/folder1/package1/firewall/policy/7/section",
+            "pkg", "folder1/package1") == "folder1/package1/firewall/policy/7"
+        assert generic_json_rpc.per_policy_scope("get", self.POLICY_URL, "pkg", "Pkg1") is None
