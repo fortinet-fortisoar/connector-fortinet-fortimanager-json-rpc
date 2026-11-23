@@ -134,8 +134,17 @@ HOLD_LOCK_UNTIL_TASK_URLS = frozenset({
 })
 
 
+# CLI script execution against the ADOM or device database. Measured on a live 7.6.8
+# appliance: the queued script needs the workspace lock while it RUNS (unlocked, or with
+# another session holding the ADOM, the task fails "No permission for the resource" while
+# the RPC returns 0). Through the connector with ADOM locking and no task tracking, a
+# device-database script returned status 0 and saved nothing, because the lock was
+# released at session close before the task ran. (tests/live/connector_script_probe.py)
+SCRIPT_EXECUTE_URL = re.compile(r'^/dvmdb/(?:adom/[^/]+/)?script/execute/?$')
+
+
 def holds_lock_until_task(url: str) -> bool:
-    return url in HOLD_LOCK_UNTIL_TASK_URLS
+    return url in HOLD_LOCK_UNTIL_TASK_URLS or bool(SCRIPT_EXECUTE_URL.match(url or ""))
 
 
 # URL families that can only be locked at ADOM level, so minimal-scope resolution must
@@ -248,10 +257,17 @@ def parse_task_timeout(task_timeout, default=120):
 ADOM_IN_URL = re.compile(r'/adom/([^/]+)(?:/|$)')
 
 
+# URLs that address the global ADOM without naming it: /pm/config/global/...,
+# /dvmdb/global/..., /pm/pkg/global, /pm/devprof/global, /pm/wanprof/global.
+GLOBAL_IN_URL = re.compile(r'^/(?:pm/config|dvmdb|pm/pkg|pm/devprof|pm/wanprof)/global(?:/|$)')
+
+
 def parse_adom_from_input(url: str, data: Union[list, dict]) -> str:
     match = ADOM_IN_URL.search(url or "")
     if match:
         return match.group(1)
+    if GLOBAL_IN_URL.match(url or ""):
+        return "global"
 
     # If the adom is not found in the URL, check the data
     def extract_adom(nested_data):
@@ -260,6 +276,8 @@ def parse_adom_from_input(url: str, data: Union[list, dict]) -> str:
                 nested_match = ADOM_IN_URL.search(nested_data['url'] or "")
                 if nested_match:
                     return nested_match.group(1)
+                if GLOBAL_IN_URL.match(nested_data['url'] or ""):
+                    return "global"
             if 'adom' in nested_data:
                 return nested_data['adom']
             for key, value in nested_data.items():
@@ -287,18 +305,25 @@ def adom_is_lockable(adom: str) -> bool:
     """
     Whether a workspace lock can be taken for this ADOM at all.
 
-    "global" cannot: neither documented global lock URL is accepted on 7.6.7. An empty
-    ADOM names nothing to lock. Both proceed unlocked -- global object writes do work
-    unlocked on this appliance and must keep working -- but they say so in the log
-    instead of arriving there through a misread -9.
-
-    The empty case is the dangerous one and this guard is what stops it. pyFMG's
+    An empty ADOM names nothing to lock, and is the dangerous case: pyFMG's
     lock_adom(adom) falls back to **root** for a falsy adom (verified: lock_adom("")
     issues /dvmdb/adom/root/workspace/lock and returns 0). Without this check, a payload
     with no ADOM would lock the root ADOM and then commit it -- publishing whatever
     another worker had staged there.
+
+    "global" IS lockable. Whether it needs the lock depends on ADOM mode, measured live:
+
+      ADOMs disabled (7.6.7)  /dvmdb/global/workspace/lock -> -9, unlocked global writes
+                              succeed. lock_adom()'s -9 branch proceeds unlocked.
+      ADOMs enabled  (7.6.8)  the same URL -> 0, and an unlocked global write is refused
+                              -10147 "no write permission", with or without another
+                              session holding the global lock.
+
+    Treating "global" as unlockable (as earlier versions did) made every global object
+    write fail in workspace mode on an appliance with ADOMs enabled.
+    (tests/live/multi_adom_probe.py)
     """
-    return bool(adom) and adom != "global"
+    return bool(adom)
 
 
 def parse_track_task_params(params):
@@ -333,11 +358,52 @@ def parse_track_task_params(params):
 PERMANENT_LOCK_FAILURES = frozenset({-6, -10, -11})
 
 
+
+LOCK_WAIT_WARN_EVERY = 60  # seconds between "still waiting" warnings
+
+
+class LockWait:
+    """Timing for one lock acquisition, so waits show up in the log.
+
+    A worker that waits on a lock is otherwise silent: each retry is a DEBUG line, and
+    FortiSOAR logs WARNING and above by default. A stuck call then looks exactly like a
+    hung one. This reports a WARNING every LOCK_WAIT_WARN_EVERY seconds while waiting,
+    and one INFO line with the total wait once the lock is taken.
+    """
+
+    def __init__(self, label: str):
+        self.label = label
+        self.started = time.monotonic()
+        self.attempts = 0
+        self._last_warning = self.started
+
+    def elapsed(self) -> float:
+        return time.monotonic() - self.started
+
+    def retrying(self, status=None) -> None:
+        self.attempts += 1
+        now = time.monotonic()
+        if now - self._last_warning >= LOCK_WAIT_WARN_EVERY:
+            self._last_warning = now
+            logger.warning(f"Still waiting for {self.label} after {self.elapsed():.0f}s "
+                           f"({self.attempts} attempts, last status {status}).")
+
+    def acquired(self) -> None:
+        if self.attempts:
+            logger.info(f"Acquired {self.label} after waiting {self.elapsed():.1f}s "
+                        f"({self.attempts} retries).")
+
+    def gave_up(self) -> str:
+        return f"after {self.elapsed():.0f}s and {self.attempts} retries"
+
+
 def lock_adom(fmg, adom, url, data):
+    wait = LockWait(f"the ADOM lock on {adom}")
     for attempt in range(MAX_RETRY_LIMIT):
         status, _ = fmg.lock_adom(adom)
         # If the lock was acquired, break the loop
         if status == 0:
+            wait.acquired()
             logger.debug(f"Acquired lock for ADOM: {adom} using URL: {url} with PAYLOAD: {data}.")
             return True
         # status == -9 means that the command for the url is invalid. This happens when an adom is attempted to be
@@ -377,10 +443,11 @@ def lock_adom(fmg, adom, url, data):
             sleep_time = random.randint(1, 10)
             logger.debug(
                 f"Failed to acquire lock for ADOM: {adom} using URL: {url} with PAYLOAD: {data}. Sleeping {sleep_time} seconds and retrying...")
+            wait.retrying(status)
             time.sleep(sleep_time)
         else:
             logger.error(
-                f"Max retry limit reached. Could not acquire lock for ADOM: {adom} using URL: {url} with PAYLOAD: {data}.")
+                f"Max retry limit reached {wait.gave_up()}. Could not acquire lock for ADOM: {adom} using URL: {url} with PAYLOAD: {data}.")
             return False
     return False
 
@@ -554,6 +621,33 @@ def list_adom_packages(fmg, adom: str) -> list:
     return paths
 
 
+def free_form_adoms(data) -> set:
+    """Every ADOM a freeform batch addresses (from each request's URL or its data)."""
+    requests = data.get("data") if isinstance(data, dict) else None
+    adoms = set()
+    for request in requests if isinstance(requests, list) else []:
+        if isinstance(request, dict):
+            adom = parse_adom_from_input(request.get("url"), request.get("data") or {})
+            if adom:
+                adoms.add(adom)
+    return adoms
+
+
+def free_form_status(status, response) -> int:
+    """Top-level status for a freeform batch.
+
+    pyFMG returns the HTTP status (200) for a free_form call, not an FMG code, so a batch
+    whose requests failed used to report 200 and look successful. A failing request's code
+    now replaces it. A batch that succeeds keeps the 200 it always returned, because
+    existing playbooks test for it.
+    """
+    if isinstance(response, list):
+        for item in response:
+            code = (item.get("status") or {}).get("code") if isinstance(item, dict) else None
+            if code not in (0, None):
+                return code
+    return status
+
 def parse_free_form_lock_scope(data: dict, known_packages=None) -> tuple:
     """
     Determine the minimal lock scope covering every request in a free_form batch.
@@ -586,9 +680,11 @@ def lock_minimal_scope(fmg, adom: str, scope_type: str, scope_id: str, url: str,
     logic as lock_adom.
     """
     lock_url = f"/dvmdb/adom/{adom}/workspace/lock/{scope_type}/{scope_id}"
+    wait = LockWait(f"the {scope_type}/{scope_id} lock in ADOM {adom}")
     for attempt in range(MAX_RETRY_LIMIT):
         status, _ = fmg.execute(url=lock_url)
         if status == 0:
+            wait.acquired()
             logger.debug(f"Acquired minimal lock for {scope_type}/{scope_id} in ADOM: {adom} (URL: {url}).")
             return True
         # -9 means the workspace command is invalid, i.e. workspace mode is not
@@ -614,10 +710,11 @@ def lock_minimal_scope(fmg, adom: str, scope_type: str, scope_id: str, url: str,
                 f"Failed to acquire minimal lock for {scope_type}/{scope_id} in ADOM: {adom}. "
                 f"Sleeping {sleep_time}s and retrying..."
             )
+            wait.retrying(status)
             time.sleep(sleep_time)
         else:
             logger.error(
-                f"Max retry limit reached. Could not acquire minimal lock for "
+                f"Max retry limit reached {wait.gave_up()}. Could not acquire minimal lock for "
                 f"{scope_type}/{scope_id} in ADOM: {adom} (URL: {url})."
             )
             return False
@@ -872,6 +969,7 @@ def _fortisoar_db_connection():
 def _advisory_lock(connection, lock_id: int, adom: str, timeout: float):
     started = time.monotonic()
     waited_logged = False
+    key_wait = LockWait(f"the API-key lock for ADOM {adom}")
     with connection.cursor() as cursor:
         while True:
             cursor.execute("SELECT pg_try_advisory_lock(%s)", [lock_id])
@@ -886,6 +984,7 @@ def _advisory_lock(connection, lock_id: int, adom: str, timeout: float):
                     f"Another worker with this API key is working in ADOM: {adom}; "
                     "waiting for it (FMG gives one key one shared workspace session).")
                 waited_logged = True
+            key_wait.retrying()
             time.sleep(API_KEY_LOCK_POLL)
     logger.debug(f"Holding API-key advisory lock for ADOM: {adom} "
                  f"(waited {time.monotonic() - started:.2f}s).")
@@ -928,6 +1027,7 @@ def _file_lock(server_host: str, api_key: str, adom: str, timeout: float = None)
     try:
         started = time.monotonic()
         waited_logged = False
+        key_wait = LockWait(f"the API-key lock for ADOM {adom}")
         while True:
             try:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -942,6 +1042,7 @@ def _file_lock(server_host: str, api_key: str, adom: str, timeout: float = None)
                         f"Another worker with this API key is working in ADOM: {adom}; "
                         "waiting for it (FMG gives one key one shared workspace session).")
                     waited_logged = True
+                key_wait.retrying()
                 time.sleep(API_KEY_LOCK_POLL)
         logger.debug(f"Holding API-key workspace file lock for ADOM: {adom} "
                      f"(waited {time.monotonic() - started:.2f}s).")
@@ -973,6 +1074,16 @@ def perform_rpc_action(action: str, config: dict, params: dict) -> dict:
                     url = data["data"][0].get("url", url)
                 adom = parse_adom_from_input(url, data)
                 response = {}
+                if action == "free_form":
+                    batch_adoms = free_form_adoms(data)
+                    if len(batch_adoms) > 1 and fmg._lock_ctx.uses_workspace:
+                        # One call holds one ADOM's lock. Measured live: a batch writing to
+                        # two ADOMs locked the first, and FMG refused the second write -10147
+                        # while the call reported success.
+                        raise ConnectorError(
+                            f"This freeform batch writes to more than one ADOM "
+                            f"({', '.join(sorted(batch_adoms))}). In workspace mode one call can "
+                            f"hold only one ADOM's lock; split the batch per ADOM.")
 
                 # Determine whether a workspace lock is needed for this request.
                 # Read-only (get) actions and URLs in NO_LOCK_URLS never require a lock.
@@ -1013,7 +1124,10 @@ def perform_rpc_action(action: str, config: dict, params: dict) -> dict:
                 # with concurrent automation workers. Falls back to ADOM-level locking
                 # when no finer scope can be parsed, or when the ADOM is "global".
                 scope_type, scope_id = None, None
-                if needs_lock and config.get("minimal_locking", False) and not requires_adom_lock(url):
+                # The global ADOM has no package/device lock URLs (its lock is /dvmdb/global/workspace/
+                # lock, and /dvmdb/adom/global/... is rejected -6), so it always takes its own lock.
+                if needs_lock and config.get("minimal_locking", False) and not requires_adom_lock(url) \
+                        and adom != "global":
                     # Ask the appliance for the ADOM's package paths so packages nested in
                     # folders resolve to the path FMG actually accepts in a lock URL. Only
                     # worth the extra call when a package could actually be involved.
@@ -1074,6 +1188,7 @@ def perform_rpc_action(action: str, config: dict, params: dict) -> dict:
                     if action == "free_form":
                         method = params.get("method")
                         status, action_response = action_func(method, **data)
+                        status = free_form_status(status, action_response)
                     else:
                         status, action_response = action_func(url=url, **data)
 

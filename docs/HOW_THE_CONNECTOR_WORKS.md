@@ -32,9 +32,13 @@ The connector does:
 
    Taking a lock that isn't needed is not harmless. It makes the call wait behind any
    other writer in the ADOM.
-2. **Find the ADOM** from the URL (`/adom/<name>/`) or the payload's `adom`. If no
-   lockable ADOM resolves, such as `global` or none at all, the call goes ahead unlocked
+2. **Find the ADOM** from the URL (`/adom/<name>/`, or `/pm/config/global/...` for the
+   global ADOM) or the payload's `adom`. If no ADOM resolves, the call goes ahead unlocked
    and logs a warning.
+   - The global ADOM takes the global lock, even with Minimal Locking on, because it has
+     no package or device locks. With ADOMs enabled, FortiManager refuses unlocked global
+     writes. With ADOMs disabled there is no global lock, and the write goes ahead without
+     one.
 3. **Pick the scope.**
    - By default, the whole ADOM is locked.
    - With **Minimal Locking** on, only the policy package (`pkg/<path>`) or device
@@ -42,23 +46,36 @@ The connector does:
      the payload, and nested package folders are resolved against the ADOM's real
      package list. When no finer scope can be resolved, the ADOM is locked and the call
      logs that it fell back.
+   - Templates, template groups, provisioning profiles, SD-WAN templates, device groups
+     and ADOM objects all need the ADOM lock, which was measured live, so they use it.
    - Some URLs always take the ADOM lock, even with Minimal Locking on:
      - device onboarding (`/dvm/cmd/*`), where FortiManager offers no finer lock;
      - device-database writes (`/pm/config/device/...`). A write made under a device
        lock reports success but doesn't mark the device modified, so the next
        install/device skips the change.
 4. **Acquire, with retries.** A busy lock is retried with a random 1-10s back-off, for
-   up to 1500 attempts. A lock URL that FortiManager rejects as nonexistent fails
-   straight away instead of being retried.
+   up to 1500 attempts.
+   - A lock that FortiManager rejects permanently fails straight away instead of being
+     retried. That covers a nonexistent ADOM, package or device, and no permission
+     (`-6`, `-10`, `-11`).
+   - While a call waits, it logs a `WARNING` every minute. Once it gets the lock, it logs
+     the total wait.
+   - A worker that dies holding a lock (Username/Password) keeps it until FortiManager's
+     idle timeout ends its session, about 15 minutes measured. A second session can't
+     release it.
 5. **Run the call, commit, release.** The release happens in a `finally` block, so a
    failed call never leaves a package or device locked.
 
-### Installs hold the lock until the task finishes
+### Installs and scripts hold the lock until the task finishes
 
-`install/package`, `install/device` and `reinstall/package` return a task id
-immediately, and the actual copy to the FortiGate happens afterwards. If the lock is
+`install/package`, `install/device`, `reinstall/package` and CLI `script/execute`
+return a task id immediately, and the actual copy to the FortiGate happens afterwards. If the lock is
 released when the RPC returns, the task fails with "no write permission" while the RPC
 call still reports success.
+
+A script against the device or ADOM database has the same problem. Without the lock
+while it runs, the task fails with "No permission for the resource", even though the
+call itself returned 0.
 
 For these URLs the connector therefore follows the task to completion before it
 releases the lock, even when **Track Task** is off. It also returns the task outcome,
@@ -107,6 +124,16 @@ session. The connector runs the whole sequence for you (`SPECIAL_CASES`).
     in workspace mode.
   - The preview writes nothing to the FortiGate.
   - If any step fails, the call fails. It never returns status 0 with an empty preview.
+
+## Freeform batches
+
+A **JSON RPC Freeform** batch is locked as a whole:
+- If every request touches the same package or device, that is locked. Otherwise the
+  ADOM is locked.
+- A batch that writes to more than one ADOM is refused in workspace mode, because one
+  call can hold only one ADOM's lock. Split it into one batch per ADOM.
+- A batch with a failing request reports that request's code as its status. A
+  successful batch reports 200, as it always has.
 
 ## Errors you can trust
 

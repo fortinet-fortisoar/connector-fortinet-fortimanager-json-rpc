@@ -94,7 +94,12 @@ def connect(address=None, username=None, password=None, api_key=None):
     if port and port not in ("443", 443) and ":" not in address:
         address = f"{address}:{port}"
     verify_ssl = (os.getenv("VERIFY_SSL", "False").lower() in ("true", "1", "t"))
-    if not (username or password):
+    # Password sessions by default, even when the env file also holds an API key. Every
+    # request made with one API key is ONE FortiManager session, so probes that open
+    # "another session" with the key would only ever be talking to themselves: a second
+    # lock on the same object returns 0 and contention is never seen. Set
+    # PROBE_USE_API_KEY=1 (or pass --api-key) to measure the API-key path on purpose.
+    if not (username or password) and os.getenv("PROBE_USE_API_KEY") == "1":
         api_key = api_key or os.getenv("API_KEY")
     if api_key and not (username or password):
         return FortiManager(address, apikey=api_key, verify_ssl=verify_ssl,

@@ -267,16 +267,21 @@ class TestMinimalLockingFallback:
             ("commit_changes", "root"),
         ]
 
-    def test_global_adom_takes_no_lock_at_all(self):
-        # "global" is not lockable on 7.6.7 -- both documented global lock URLs are
-        # rejected -- so the request proceeds unlocked. It used to reach the same place
-        # by calling lock_adom("global") and misreading the resulting -9 as "this
-        # appliance has no workspace mode"; now it is an explicit decision.
+    def test_global_adom_takes_the_global_lock_even_with_minimal_locking(self):
+        # Measured live with ADOMs enabled: an unlocked global write is refused -10147,
+        # and /dvmdb/global/workspace/lock (pyFMG's lock_adom("global")) is granted. There
+        # is no package lock URL under global, so minimal locking takes the global lock.
         fmg = FakeFMG()
         url = "/pm/config/adom/global/pkg/Pkg1/firewall/policy"
         run_action(fmg, "set", {"url": url, "data": {}}, MINIMAL)
-        assert fmg.calls == [("set", url)]
-        assert workspace_calls(fmg) == []
+        assert ("lock_adom", "global") in fmg.calls
+        assert ("set", url) in fmg.calls
+        assert not any("/workspace/lock/pkg/" in (u or "") for _, u in fmg.calls)
+
+    def test_global_object_url_resolves_to_global(self):
+        assert generic_json_rpc.parse_adom_from_input(
+            "/pm/config/global/obj/firewall/address", {}) == "global"
+        assert generic_json_rpc.parse_adom_from_input("/dvmdb/global/workspace/lockinfo", {}) == "global"
 
     def test_free_form_spanning_two_packages_falls_back_to_adom_lock(self):
         # Locking only the first package would leave the writes to the second
@@ -835,10 +840,12 @@ class TestLockHeldUntilTaskCompletes:
     def test_membership_is_pinned(self, url):
         assert generic_json_rpc.holds_lock_until_task(url)
 
-    def test_script_execute_is_not_in_the_set(self):
-        # The lock authorises the run; releasing it at RPC return does not break the
-        # queued script. Adding it here would hold locks for no measured benefit.
-        assert not generic_json_rpc.holds_lock_until_task("/dvmdb/adom/root/script/execute")
+    def test_script_execute_holds_its_lock_until_the_task_finishes(self):
+        # Measured live through the connector: an untracked device-database script under
+        # the ADOM lock returned 0 and saved nothing -- the lock was gone before it ran.
+        assert generic_json_rpc.holds_lock_until_task("/dvmdb/adom/root/script/execute")
+        assert generic_json_rpc.holds_lock_until_task("/dvmdb/script/execute")
+        assert not generic_json_rpc.holds_lock_until_task("/dvmdb/adom/root/script")
 
     def test_task_is_tracked_before_the_minimal_lock_is_released(self):
         fmg = FakeFMG(exec_result=(0, {"task": 42}))
@@ -916,7 +923,7 @@ class TestUnlockableAdom:
 
     def test_adom_is_lockable(self):
         assert generic_json_rpc.adom_is_lockable("root")
-        assert not generic_json_rpc.adom_is_lockable("global")
+        assert generic_json_rpc.adom_is_lockable("global")
         assert not generic_json_rpc.adom_is_lockable("")
         assert not generic_json_rpc.adom_is_lockable(None)
 
@@ -934,12 +941,17 @@ class TestUnlockableAdom:
         assert generic_json_rpc.lock_adom(fmg, "root", "/url", {}) is True
 
     def test_minus_nine_is_a_failure_for_an_unlockable_adom(self):
-        # The old branch returned True here, which is what silently disabled locking for
-        # every global-resolving payload on every URL.
+        # An empty ADOM must never be reported as locked.
         fmg = FakeFMG()
         fmg.lock_adom = lambda adom: (-9, {})
-        assert generic_json_rpc.lock_adom(fmg, "global", "/url", {}) is False
         assert generic_json_rpc.lock_adom(fmg, "", "/url", {}) is False
+
+    def test_minus_nine_on_global_proceeds_when_adoms_are_disabled(self):
+        # Measured on 7.6.7 with ADOMs disabled: the global lock URL returns -9 and an
+        # unlocked global write succeeds, so -9 there means "nothing to lock".
+        fmg = FakeFMG()
+        fmg.lock_adom = lambda adom: (-9, {})
+        assert generic_json_rpc.lock_adom(fmg, "global", "/url", {}) is True
 
 
 # ---------------------------------------------------------------------------
@@ -1204,3 +1216,47 @@ def test_lock_adom_retries_contention():
             patch.object(generic_json_rpc.time, "sleep"):
         assert generic_json_rpc.lock_adom(fmg, "root", "/x", {}) is False
     assert fmg.attempts == 3
+
+
+def test_lock_wait_warns_while_waiting_and_reports_total(caplog):
+    """A lock wait must be visible at WARNING (FortiSOAR's default level) while it lasts."""
+    fmg = _RejectingLockFMG(-20055)
+    clock = iter(range(0, 10000, 31))   # each monotonic() call advances 31s
+    with patch.object(generic_json_rpc, "MAX_RETRY_LIMIT", 6), \
+            patch.object(generic_json_rpc.time, "sleep"), \
+            patch.object(generic_json_rpc.time, "monotonic", lambda: next(clock)), \
+            caplog.at_level("DEBUG"):
+        assert generic_json_rpc.lock_adom(fmg, "root", "/x", {}) is False
+    warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+    assert warnings and all("Still waiting for the ADOM lock on root" in w for w in warnings)
+    assert any("Max retry limit reached after" in r.getMessage() for r in caplog.records)
+
+
+def test_lock_wait_reports_acquired_after_retries(caplog):
+    class EventuallyFree(_RejectingLockFMG):
+        def lock_adom(self, adom):
+            self.attempts += 1
+            return (0 if self.attempts == 3 else -20055), {}
+    with patch.object(generic_json_rpc.time, "sleep"), caplog.at_level("INFO"):
+        assert generic_json_rpc.lock_adom(EventuallyFree(0), "root", "/x", {}) is True
+    assert any("Acquired the ADOM lock on root after waiting" in r.getMessage()
+               and "(2 retries)" in r.getMessage() for r in caplog.records)
+
+
+
+class TestFreeFormBatches:
+    def test_batch_spanning_two_adoms_is_refused_in_workspace_mode(self):
+        # Measured live: the second ADOM's write was refused -10147 while the call
+        # reported success.
+        fmg = FakeFMG()
+        params = {"method": "add", "data": {"data": [
+            {"url": "/pm/config/adom/root/obj/firewall/address"},
+            {"url": "/pm/config/adom/other/obj/firewall/address"}]}}
+        with pytest.raises(Exception, match="more than one ADOM"):
+            run_action(fmg, "free_form", params, BASE_CONFIG)
+        assert not any(name == "lock_adom" for name, _ in fmg.calls)
+
+    def test_status_reports_the_first_failing_request(self):
+        response = [{"status": {"code": 0}}, {"status": {"code": -10147}}]
+        assert generic_json_rpc.free_form_status(200, response) == -10147
+        assert generic_json_rpc.free_form_status(200, [{"status": {"code": 0}}]) == 200

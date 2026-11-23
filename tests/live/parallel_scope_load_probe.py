@@ -62,7 +62,9 @@ tests_directory = os.path.abspath(os.path.join(current_directory, os.pardir))
 repo_root = os.path.abspath(os.path.join(tests_directory, os.pardir))
 sys.path.insert(0, current_directory)
 sys.path.insert(0, repo_root)
+sys.path.insert(0, tests_directory)
 
+import conftest  # noqa: E402,F401  -- registers the connectors.core stub
 from lock_matrix_probe import connect, resolve_task  # noqa: E402
 
 generic_json_rpc = importlib.import_module("fortinet-fortimanager-json-rpc.generic_json_rpc")
@@ -286,6 +288,8 @@ def main():
 
     config_base = {
         "address": args.address or os.getenv("ADDRESS", ""),
+        "port": os.getenv("PORT"),
+        "auth_method": "Username/Password",
         "username": args.username or os.getenv("USERNAME"),
         "password": args.password or os.getenv("PASSWORD"),
         "verify_ssl": False,
