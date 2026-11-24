@@ -53,6 +53,7 @@ For the procedure to configure a connector, click [here](https://docs.fortinet.c
 ## Actions supported by the connector
 The following automated operations can be included in playbooks and you can also use the annotations to access operations from FortiSOAR&trade; release 4.10.0 and onwards:
 <table border=1><thead><tr><th>Function</th><th>Description</th><th>Annotation and Category</th></tr></thead><tbody><tr><td>JSON RPC Add</td><td>A Generic FMG Add action that lets you specify any valid URL and data object</td><td>json_rpc_add <br/>Investigation</td></tr>
+<tr><td>JSON RPC Update</td><td>A Generic FMG Update action that changes only an existing object (it never creates one; use Set to create or replace)</td><td>json_rpc_update <br/>Investigation</td></tr>
 <tr><td>JSON RPC Set</td><td>A Generic FMG Set action that lets you specify any valid URL and data object</td><td>json_rpc_set <br/>Investigation</td></tr>
 <tr><td>JSON RPC Get</td><td>A Generic FMG Get action that lets you specify any valid URL and data object</td><td>json_rpc_get <br/>Investigation</td></tr>
 <tr><td>JSON RPC Exec</td><td>A Generic FMG Execute action that lets you specify any valid URL and data object</td><td>json_rpc_execute <br/>Investigation</td></tr>
@@ -69,6 +70,15 @@ The following automated operations can be included in playbooks and you can also
 #### Output
 
  The output contains a non-dictionary value.
+### operation: JSON RPC Update
+#### Input parameters
+<table border=1><thead><tr><th>Parameter</th><th>Description</th></tr></thead><tbody><tr><td>URL</td><td>The URL of the existing object to update.
+</td></tr><tr><td>Data</td><td>JSON object with the fields to change. Fields not sent are kept. An object that does not exist returns an error and is not created.
+</td></tr></tbody></table>
+
+#### Output
+The output contains a non-dictionary value.
+
 ### operation: JSON RPC Set
 #### Input parameters
 <table border=1><thead><tr><th>Parameter</th><th>Description</th></tr></thead><tbody><tr><td>URL</td><td>The url you wish to hit

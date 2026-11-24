@@ -318,6 +318,43 @@ class TestAdomLockRelease:
 # 2. Minimal lock released after pkg-scoped write
 # ---------------------------------------------------------------------------
 
+class TestUpdateAction:
+    """json_rpc_update is a write: in workspace mode it takes and releases a lock like set."""
+
+    def test_update_takes_and_releases_the_lock(self, auth_config):
+        if not _workspace_enabled(auth_config):
+            pytest.skip("Workspace mode not enabled")
+        name = "test-update-lock-1"
+        assert _add_address(auth_config, name, octet=209).get("status") == 0
+        try:
+            response = operations["json_rpc_update"](auth_config, {
+                "url": f"/pm/config/adom/root/obj/firewall/address/{name}",
+                "data": {"comment": "update under workspace lock"}})
+            assert response.get("status") == 0, response
+            got = operations["json_rpc_get"](auth_config, {
+                "url": f"/pm/config/adom/root/obj/firewall/address/{name}"})
+            assert got.get("get_response", {}).get("comment") == "update under workspace lock"
+            assert not _get_lockinfo(auth_config), "update left a workspace lock behind"
+        finally:
+            _delete_address(auth_config, name)
+
+    def test_policy_update_under_minimal_locking(self, minimal_lock_config):
+        if not _workspace_enabled(minimal_lock_config):
+            pytest.skip("Workspace mode not enabled")
+        response, policy_id = _add_policy(minimal_lock_config, "test-update-policy-1")
+        assert response.get("status") == 0 and policy_id is not None, response
+        try:
+            url = f"/pm/config/adom/root/pkg/default/firewall/policy/{policy_id}"
+            response = operations["json_rpc_update"](minimal_lock_config, {
+                "url": url, "data": {"comments": "update under pkg lock"}})
+            assert response.get("status") == 0, response
+            got = operations["json_rpc_get"](minimal_lock_config, {"url": url})
+            assert got.get("get_response", {}).get("comments") == "update under pkg lock"
+            assert not _get_lockinfo(minimal_lock_config)
+        finally:
+            _delete_policy(minimal_lock_config, policy_id)
+
+
 class TestMinimalLockRelease:
     """Verifies that minimal (pkg/dev) scope locks are released after each op."""
 

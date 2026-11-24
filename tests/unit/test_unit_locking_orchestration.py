@@ -102,6 +102,12 @@ class FakeFMG:
             raise self.action_error
         return 0, {"status": "OK"}
 
+    def update(self, url=None, **kwargs):
+        self.calls.append(("update", url))
+        if self.action_error:
+            raise self.action_error
+        return 0, {"status": "OK"}
+
     def add(self, url=None, **kwargs):
         self.calls.append(("add", url))
         if self.action_error:
@@ -1311,3 +1317,24 @@ class TestPerPolicyLocking:
             "update", "/pm/config/adom/root/pkg/folder1/package1/firewall/policy/7/section",
             "pkg", "folder1/package1") == "folder1/package1/firewall/policy/7"
         assert generic_json_rpc.per_policy_scope("get", self.POLICY_URL, "pkg", "Pkg1") is None
+
+
+
+class TestUpdateAction:
+    def test_update_is_registered(self):
+        ops = importlib.import_module("fortinet-fortimanager-json-rpc.operations").operations
+        assert "json_rpc_update" in ops
+
+    def test_update_takes_the_adom_lock_like_set(self):
+        fmg = FakeFMG()
+        url = "/pm/config/adom/root/obj/firewall/address/a"
+        run_action(fmg, "update", {"url": url, "data": {"data": {"comment": "x"}}}, BASE_CONFIG)
+        assert [c for c in fmg.calls if c[0] in ("lock_adom", "update", "commit_changes")] == [
+            ("lock_adom", "root"), ("update", url), ("commit_changes", "root")]
+
+    def test_policy_update_takes_a_policy_lock_when_enabled(self):
+        fmg = _PerPolicyFMG(True)
+        fmg.update = lambda url=None, **kw: (fmg.calls.append(("update", url)), (0, {}))[1]
+        run_action(fmg, "update", {"url": TestPerPolicyLocking.POLICY_URL, "data": {}}, MINIMAL)
+        assert any(u.endswith("/lock/pkg/Pkg1/firewall/policy/25")
+                   for n, u in fmg.calls if n == "execute")

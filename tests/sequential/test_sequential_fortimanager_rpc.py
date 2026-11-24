@@ -290,6 +290,30 @@ def test_rpc_set(setup_params):
     response = operations['json_rpc_delete'](auth_config, params_delete)
 
 
+def test_rpc_update(setup_params):
+    """update changes only the fields sent, and -- unlike set -- never creates an object."""
+    auth_config, params_add, params_delete = setup_params
+    response = operations['json_rpc_add'](auth_config, params_add)
+    assert response.get("status") == 0
+    try:
+        response = operations['json_rpc_update'](auth_config, {
+            "url": params_delete["url"], "data": {"comment": "updated-by-json-rpc-update"}})
+        assert response.get("status") == 0, response
+        assert "update_response" in response, "Response missing 'update_response' key"
+
+        current = operations['json_rpc_get'](auth_config, params_delete).get("get_response", {})
+        assert current.get("comment") == "updated-by-json-rpc-update"
+        # Fields that were not sent are kept.
+        assert current.get("subnet", [None])[0] == params_add["data"][0]["subnet"][0]
+
+        missing = params_delete["url"].rstrip("/") + "-does-not-exist"
+        response = operations['json_rpc_update'](auth_config, {"url": missing, "data": {"comment": "x"}})
+        assert response.get("status") != 0, "update of a missing object must fail, not create it"
+        assert operations['json_rpc_get'](auth_config, {"url": missing}).get("status") != 0
+    finally:
+        operations['json_rpc_delete'](auth_config, params_delete)
+
+
 def test_rpc_delete(setup_params):
     auth_config, params_add, params_delete = setup_params
     # First, run the add test
