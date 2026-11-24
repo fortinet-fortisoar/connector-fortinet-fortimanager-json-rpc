@@ -1115,6 +1115,20 @@ def move_params(params: dict) -> dict:
     return {"option": option, "target": str(target)}
 
 
+def clone_data(data) -> dict:
+    """Clone keyword arguments, refusing a clone that does not name the copy.
+
+    Measured live: a clone with no new name answers status 0 and the SOURCE's name, and
+    creates nothing -- a playbook would believe it had copied the object.
+    """
+    data = data if isinstance(data, dict) else {}
+    inner = data.get("data") if isinstance(data.get("data"), dict) else {}
+    if not (inner.get("name") or data.get("name")):
+        raise ConnectorError('Clone needs a name for the copy: {"data": {"name": "new-name"}}. '
+                             "Without one FortiManager reports success and copies nothing.")
+    return data if inner else {"data": data}
+
+
 def perform_rpc_action(action: str, config: dict, params: dict) -> dict:
     server_host, username, password, api_key, verify_ssl = get_config(config)
     try:
@@ -1255,6 +1269,8 @@ def perform_rpc_action(action: str, config: dict, params: dict) -> dict:
                         status = free_form_status(status, action_response)
                     elif action == "move":
                         status, action_response = action_func(url, move_params(params))
+                    elif action == "clone":
+                        status, action_response = action_func(url=url, **clone_data(data))
                     else:
                         status, action_response = action_func(url=url, **data)
 

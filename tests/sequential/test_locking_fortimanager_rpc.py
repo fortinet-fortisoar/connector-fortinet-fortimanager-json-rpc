@@ -420,6 +420,108 @@ class TestMoveCloneReplace:
             _delete_address(auth_config, name)
 
 
+class TestMoveCloneReplaceEdges:
+    """Edge cases, measured live first and pinned here."""
+
+    ADDR = TestMoveCloneReplace.ADDR
+    PKG = TestMoveCloneReplace.PKG
+
+    def test_move_after_and_bad_targets(self, auth_config):
+        order = TestMoveCloneReplace._order
+        ids = []
+        try:
+            for name in ("test-edge-move-1", "test-edge-move-2", "test-edge-move-3"):
+                response, policy_id = _add_policy(auth_config, name)
+                assert response.get("status") == 0, response
+                ids.append(policy_id)
+            response = operations["json_rpc_move"](auth_config, {
+                "url": f"{self.PKG}/{ids[0]}", "option": "after", "target": ids[2]})
+            assert response.get("status") == 0, response
+            assert order(self, auth_config, ids) == [ids[1], ids[2], ids[0]]
+            # A target or policy that does not exist fails -3 and changes nothing.
+            for url, target in ((f"{self.PKG}/{ids[0]}", 999999), (f"{self.PKG}/999999", ids[0])):
+                response = operations["json_rpc_move"](auth_config, {
+                    "url": url, "option": "before", "target": target})
+                assert response.get("status") == -3, response
+            assert order(self, auth_config, ids) == [ids[1], ids[2], ids[0]]
+        finally:
+            for policy_id in ids:
+                _delete_policy(auth_config, policy_id)
+
+    def test_replace_never_creates(self, auth_config):
+        url = f"{self.ADDR}/test-edge-replace-missing"
+        _delete_address(auth_config, "test-edge-replace-missing")
+        response = operations["json_rpc_replace"](auth_config, {
+            "url": url, "data": {"data": _make_address("test-edge-replace-missing", 214)}})
+        assert response.get("status") == -3, response
+        assert operations["json_rpc_get"](auth_config, {"url": url}).get("status") != 0
+
+    def test_clone_edges(self, auth_config):
+        for name, octet in (("test-edge-clone-a", 215), ("test-edge-clone-b", 216)):
+            assert _add_address(auth_config, name, octet=octet).get("status") == 0
+        try:
+            # Into a name that exists: -2, and the existing object is untouched.
+            response = operations["json_rpc_clone"](auth_config, {
+                "url": f"{self.ADDR}/test-edge-clone-a", "data": {"data": {"name": "test-edge-clone-b"}}})
+            assert response.get("status") == -2, response
+            b = operations["json_rpc_get"](auth_config, {"url": f"{self.ADDR}/test-edge-clone-b"})
+            assert b["get_response"]["subnet"][0] == _make_address("x", 216)["subnet"][0]
+            # From a source that does not exist: -3, nothing created.
+            response = operations["json_rpc_clone"](auth_config, {
+                "url": f"{self.ADDR}/test-edge-clone-nope", "data": {"data": {"name": "test-edge-clone-c"}}})
+            assert response.get("status") == -3, response
+            assert operations["json_rpc_get"](auth_config, {"url": f"{self.ADDR}/test-edge-clone-c"}).get("status") != 0
+            # Without a new name: refused by the connector (FMG would report a no-op as success).
+            with pytest.raises(Exception, match="name for the copy"):
+                operations["json_rpc_clone"](auth_config, {"url": f"{self.ADDR}/test-edge-clone-a", "data": {}})
+        finally:
+            for name in ("test-edge-clone-a", "test-edge-clone-b", "test-edge-clone-c"):
+                _delete_address(auth_config, name)
+
+
+class TestNewActionsConcurrently:
+    """Update, Clone, Replace and Move fired at once from parallel workers. With an API key
+    they share one FMG session and depend on the connector's key lock; with passwords
+    they contend on the workspace lock. Every call must succeed and leave no lock."""
+
+    ADDR = TestMoveCloneReplace.ADDR
+    PKG = TestMoveCloneReplace.PKG
+
+    @pytest.mark.parametrize("minimal", [False, True], ids=["adom-lock", "minimal-lock"])
+    def test_parallel_new_actions(self, auth_config, minimal):
+        config = dict(auth_config, minimal_locking=minimal)
+        names = ["test-par-upd", "test-par-cln", "test-par-rpl"]
+        for i, name in enumerate(names):
+            assert _add_address(config, name, octet=220 + i).get("status") == 0
+        ids = []
+        try:
+            for name in ("test-par-mv-1", "test-par-mv-2"):
+                response, policy_id = _add_policy(config, name)
+                assert response.get("status") == 0, response
+                ids.append(policy_id)
+            calls = [
+                ("json_rpc_update", {"url": f"{self.ADDR}/test-par-upd", "data": {"comment": "par"}}),
+                ("json_rpc_clone", {"url": f"{self.ADDR}/test-par-cln", "data": {"data": {"name": "test-par-cln-copy"}}}),
+                ("json_rpc_replace", {"url": f"{self.ADDR}/test-par-rpl", "data": {"data": _make_address("test-par-rpl", 230)}}),
+                ("json_rpc_move", {"url": f"{self.PKG}/{ids[1]}", "option": "before", "target": ids[0]}),
+            ]
+            with ThreadPoolExecutor(max_workers=len(calls)) as pool:
+                results = list(pool.map(lambda c: (c[0], operations[c[0]](config, c[1])), calls))
+            for op_name, response in results:
+                assert response.get("status") == 0, f"{op_name}: {response}"
+            assert TestMoveCloneReplace._order(self, config, ids) == [ids[1], ids[0]]
+            got = operations["json_rpc_get"](config, {"url": f"{self.ADDR}/test-par-upd"})
+            assert got["get_response"].get("comment") == "par"
+            assert operations["json_rpc_get"](config, {"url": f"{self.ADDR}/test-par-cln-copy"}).get("status") == 0
+            if _workspace_enabled(config):
+                assert not _get_lockinfo(config), "a workspace lock was left behind"
+        finally:
+            for policy_id in ids:
+                _delete_policy(config, policy_id)
+            for name in names + ["test-par-cln-copy"]:
+                _delete_address(config, name)
+
+
 class TestMinimalLockRelease:
     """Verifies that minimal (pkg/dev) scope locks are released after each op."""
 

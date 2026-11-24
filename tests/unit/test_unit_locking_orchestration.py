@@ -1388,3 +1388,19 @@ class TestMoveCloneReplace:
             run_action(fmg, action, {"url": url, "data": {"data": {"name": "b"}}}, BASE_CONFIG)
             assert [c for c in fmg.calls if c[0] in ("lock_adom", action)] == [
                 ("lock_adom", "root"), (action, url)]
+
+
+    def test_clone_without_a_new_name_is_refused(self):
+        # Live: FMG answers 0 with the source's name and copies nothing.
+        for data in ({}, {"data": {}}, {"data": {"comment": "x"}}):
+            fmg = FakeFMG()
+            with pytest.raises(Exception, match="name for the copy"):
+                run_action(fmg, "clone", {"url": "/pm/config/adom/root/obj/firewall/address/a",
+                                          "data": data}, BASE_CONFIG)
+            assert not any(n == "clone" for n, _ in fmg.calls)
+
+    def test_clone_name_shorthand_is_wrapped(self):
+        fmg = FakeFMG()
+        run_action(fmg, "clone", {"url": "/pm/config/adom/root/obj/firewall/address/a",
+                                  "data": {"name": "b"}}, BASE_CONFIG)
+        assert fmg.clone_kwargs == {"data": {"name": "b"}}
