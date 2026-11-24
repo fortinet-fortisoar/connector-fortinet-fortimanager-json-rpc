@@ -242,6 +242,130 @@
       "output_schema": {}
     },
     {
+      "operation": "json_rpc_move",
+      "title": "JSON RPC Move",
+      "annotation": "json_rpc_move",
+      "description": "Moves an object before or after another one in the same table, e.g. to reorder firewall policies in a policy package.",
+      "category": "investigation",
+      "is_config_required": true,
+      "visible": true,
+      "enabled": true,
+      "parameters": [
+        {
+          "name": "url",
+          "title": "URL",
+          "type": "text",
+          "editable": true,
+          "visible": true,
+          "required": true,
+          "placeholder": "/pm/config/adom/root/pkg/default/firewall/policy/12",
+          "description": "URL of the object to move, e.g. /pm/config/adom/<adom>/pkg/<package>/firewall/policy/<policyid>.",
+          "tooltip": "URL of the object to move."
+        },
+        {
+          "name": "option",
+          "title": "Position",
+          "type": "select",
+          "options": [
+            "before",
+            "after"
+          ],
+          "value": "before",
+          "editable": true,
+          "visible": true,
+          "required": true,
+          "description": "Place the object before or after the target.",
+          "tooltip": "Place the object before or after the target."
+        },
+        {
+          "name": "target",
+          "title": "Target",
+          "type": "text",
+          "editable": true,
+          "visible": true,
+          "required": true,
+          "placeholder": "10",
+          "description": "Key of the object to move it next to, for a firewall policy its policy ID.",
+          "tooltip": "Key of the object to move it next to (a policy ID for firewall policies)."
+        }
+      ],
+      "output_schema": {}
+    },
+    {
+      "operation": "json_rpc_clone",
+      "title": "JSON RPC Clone",
+      "annotation": "json_rpc_clone",
+      "description": "Copies an existing object under a new name (and any other fields you override).",
+      "category": "investigation",
+      "is_config_required": true,
+      "visible": true,
+      "enabled": true,
+      "parameters": [
+        {
+          "name": "url",
+          "title": "URL",
+          "type": "text",
+          "editable": true,
+          "visible": true,
+          "required": true,
+          "placeholder": "/pm/config/adom/root/obj/firewall/address/web-server",
+          "description": "URL of the object to copy.",
+          "tooltip": "URL of the object to copy."
+        },
+        {
+          "name": "data",
+          "title": "Data",
+          "type": "json",
+          "editable": true,
+          "visible": true,
+          "required": true,
+          "placeholder": {
+            "data": {
+              "name": "web-server-copy"
+            }
+          },
+          "description": "The fields of the copy that differ from the original, wrapped in data, at least the new name: {\"data\": {\"name\": \"new-name\"}}.",
+          "tooltip": "Fields of the copy, at least the new name: {\"data\": {\"name\": \"new-name\"}}."
+        }
+      ],
+      "output_schema": {}
+    },
+    {
+      "operation": "json_rpc_replace",
+      "title": "JSON RPC Replace",
+      "annotation": "json_rpc_replace",
+      "description": "Replaces an object entirely. Any field you do not send is reset to its default; use JSON RPC Update to change only some fields.",
+      "category": "investigation",
+      "is_config_required": true,
+      "visible": true,
+      "enabled": true,
+      "parameters": [
+        {
+          "name": "url",
+          "title": "URL",
+          "type": "text",
+          "editable": true,
+          "visible": true,
+          "required": true,
+          "placeholder": "/pm/config/adom/root/obj/firewall/address/web-server",
+          "description": "URL of the object to replace.",
+          "tooltip": "URL of the object to replace."
+        },
+        {
+          "name": "data",
+          "title": "Data",
+          "type": "json",
+          "editable": true,
+          "visible": true,
+          "required": true,
+          "placeholder": {},
+          "description": "The complete object. Fields you leave out are reset to their defaults, not kept.",
+          "tooltip": "The complete object: fields you leave out are RESET, not kept."
+        }
+      ],
+      "output_schema": {}
+    },
+    {
       "operation": "json_rpc_get",
       "title": "JSON RPC Get",
       "annotation": "json_rpc_get",
@@ -555,7 +679,7 @@
           "visible": true,
           "required": false,
           "value": "root",
-          "description": "VDOM to query for policies. Default is \u0027root\u0027.",
+          "description": "VDOM to query for policies. Default is 'root'.",
           "class": "group-element last"
         },
         {
@@ -573,17 +697,17 @@
           "value": [
             [
               "os_type",
-              "\u003d\u003d",
+              "==",
               "fos"
             ],
-            "\u0026\u0026",
+            "&&",
             [
               "conn_status",
-              "\u003d\u003d",
+              "==",
               "up"
             ]
           ],
-          "description": "Filter criteria for devices. Example: [[\"os_type\",\"\u003d\u003d\",\"fos\"],\"\u0026\u0026\",[\"conn_status\",\"\u003d\u003d\",\"up\"]]",
+          "description": "Filter criteria for devices. Example: [[\"os_type\",\"==\",\"fos\"],\"&&\",[\"conn_status\",\"==\",\"up\"]]",
           "class": "group-element"
         },
         {
@@ -943,7 +1067,7 @@
           "visible": true,
           "required": false,
           "value": false,
-          "description": "Exclude the impacted version list (when unchecked, converts to simple version strings like [\u00277.6.0\u0027, \u00277.4.7\u0027])"
+          "description": "Exclude the impacted version list (when unchecked, converts to simple version strings like ['7.6.0', '7.4.7'])"
         },
         {
           "name": "severity_filter",

@@ -102,6 +102,20 @@ class FakeFMG:
             raise self.action_error
         return 0, {"status": "OK"}
 
+    def move(self, url=None, *args, **kwargs):
+        self.calls.append(("move", url))
+        self.move_args = args
+        return 0, {"policyid": 2}
+
+    def clone(self, url=None, **kwargs):
+        self.calls.append(("clone", url))
+        self.clone_kwargs = kwargs
+        return 0, {"name": "copy"}
+
+    def replace(self, url=None, **kwargs):
+        self.calls.append(("replace", url))
+        return 0, {"status": "OK"}
+
     def update(self, url=None, **kwargs):
         self.calls.append(("update", url))
         if self.action_error:
@@ -1338,3 +1352,39 @@ class TestUpdateAction:
         run_action(fmg, "update", {"url": TestPerPolicyLocking.POLICY_URL, "data": {}}, MINIMAL)
         assert any(u.endswith("/lock/pkg/Pkg1/firewall/policy/25")
                    for n, u in fmg.calls if n == "execute")
+
+
+
+class TestMoveCloneReplace:
+    POLICY = "/pm/config/adom/root/pkg/Pkg1/firewall/policy/25"
+
+    def test_operations_are_registered(self):
+        ops = importlib.import_module("fortinet-fortimanager-json-rpc.operations").operations
+        assert {"json_rpc_move", "json_rpc_clone", "json_rpc_replace"} <= set(ops)
+
+    def test_move_sends_option_and_string_target_at_the_top_level(self):
+        # Live: kwargs land under "data" (-7 Invalid option) and an int target is -3.
+        fmg = FakeFMG()
+        run_action(fmg, "move", {"url": self.POLICY, "option": "Before", "target": 24}, BASE_CONFIG)
+        assert fmg.move_args == ({"option": "before", "target": "24"},)
+
+    def test_move_rejects_a_bad_position_and_a_missing_target(self):
+        for params in ({"url": self.POLICY, "option": "above", "target": "1"},
+                       {"url": self.POLICY, "option": "after"}):
+            with pytest.raises(Exception):
+                run_action(FakeFMG(), "move", params, BASE_CONFIG)
+
+    def test_move_takes_the_package_lock_even_with_per_policy_lock_on(self):
+        # Reordering changes the package's policy order, not just the one policy.
+        fmg = _PerPolicyFMG(True)
+        run_action(fmg, "move", {"url": self.POLICY, "option": "before", "target": "1"}, MINIMAL)
+        locks = [u for n, u in fmg.calls if n == "execute" and "/workspace/lock/" in (u or "")]
+        assert locks == ["/dvmdb/adom/root/workspace/lock/pkg/Pkg1"]
+
+    def test_clone_and_replace_take_the_adom_lock(self):
+        for action in ("clone", "replace"):
+            fmg = FakeFMG()
+            url = "/pm/config/adom/root/obj/firewall/address/a"
+            run_action(fmg, action, {"url": url, "data": {"data": {"name": "b"}}}, BASE_CONFIG)
+            assert [c for c in fmg.calls if c[0] in ("lock_adom", action)] == [
+                ("lock_adom", "root"), (action, url)]

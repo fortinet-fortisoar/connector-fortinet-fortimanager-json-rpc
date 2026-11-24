@@ -2,6 +2,9 @@
 
 Following enhancements have been made to the Fortinet FortiManager JSON RPC Connector in version 1.2.7:
 
+- New **JSON RPC Move** action, which reorders objects such as firewall policies in a package ("move policy 12 before 10"). It takes the package lock, including when per-policy locking is in use, because a move changes the package's policy order.
+- New **JSON RPC Clone** action, which copies an existing object under a new name.
+- New **JSON RPC Replace** action, which replaces an object entirely. Fields that are not sent are reset to their defaults, not kept.
 - New **JSON RPC Update** action, which calls FortiManager's `update` method. Unlike **JSON RPC Set**, it changes only an object that already exists: on a missing object it returns `-3` and creates nothing, while `set` creates it.
 - Workspace locking now reflects behaviour measured against a live appliance rather than assumption:
   - `/securityconsole/install/device` takes a lock again. Without one, an install with pending device-database changes fails inside the queued task while the RPC still reports success.

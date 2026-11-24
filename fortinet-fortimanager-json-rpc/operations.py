@@ -42,6 +42,30 @@ def json_rpc_update(config: dict, params: dict) -> dict:
     except Exception as e:
         raise ConnectorError(str(e))
 
+def json_rpc_move(config: dict, params: dict) -> dict:
+    action = "move"
+    try:
+        response = perform_rpc_action(action, config, params)
+        return response
+    except Exception as e:
+        raise ConnectorError(str(e))
+
+def json_rpc_clone(config: dict, params: dict) -> dict:
+    action = "clone"
+    try:
+        response = perform_rpc_action(action, config, params)
+        return response
+    except Exception as e:
+        raise ConnectorError(str(e))
+
+def json_rpc_replace(config: dict, params: dict) -> dict:
+    action = "replace"
+    try:
+        response = perform_rpc_action(action, config, params)
+        return response
+    except Exception as e:
+        raise ConnectorError(str(e))
+
 def json_rpc_set(config: dict, params: dict) -> dict:
     action = "set"
     try:
@@ -120,6 +144,9 @@ operations = {
     'json_rpc_add': json_rpc_add,
     'json_rpc_update': json_rpc_update,
     'json_rpc_set': json_rpc_set,
+    'json_rpc_move': json_rpc_move,
+    'json_rpc_clone': json_rpc_clone,
+    'json_rpc_replace': json_rpc_replace,
     'json_rpc_get': json_rpc_get,
     'json_rpc_execute': json_rpc_execute,
     'json_rpc_delete': json_rpc_delete,

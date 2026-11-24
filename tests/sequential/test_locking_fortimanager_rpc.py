@@ -355,6 +355,71 @@ class TestUpdateAction:
             _delete_policy(minimal_lock_config, policy_id)
 
 
+class TestMoveCloneReplace:
+    """Live: move reorders policies, clone copies, replace resets what is not sent."""
+
+    ADDR = "/pm/config/adom/root/obj/firewall/address"
+    PKG = "/pm/config/adom/root/pkg/default/firewall/policy"
+
+    def _order(self, config, ids):
+        got = operations["json_rpc_get"](config, {"url": self.PKG, "data": {"fields": ["policyid"]}})
+        return [p["policyid"] for p in got.get("get_response") or [] if p["policyid"] in ids]
+
+    def _no_locks_left(self, config):
+        if _workspace_enabled(config):
+            assert not _get_lockinfo(config), "a workspace lock was left behind"
+
+    @pytest.mark.parametrize("minimal", [False, True], ids=["adom-lock", "minimal-lock"])
+    def test_move_reorders_policies(self, auth_config, minimal):
+        config = dict(auth_config, minimal_locking=minimal)
+        ids = []
+        try:
+            for name in ("test-move-1", "test-move-2"):
+                response, policy_id = _add_policy(config, name)
+                assert response.get("status") == 0 and policy_id is not None, response
+                ids.append(policy_id)
+            assert self._order(config, ids) == ids
+            response = operations["json_rpc_move"](config, {
+                "url": f"{self.PKG}/{ids[1]}", "option": "before", "target": ids[0]})
+            assert response.get("status") == 0, response
+            assert self._order(config, ids) == [ids[1], ids[0]]
+            self._no_locks_left(config)
+        finally:
+            for policy_id in ids:
+                _delete_policy(config, policy_id)
+
+    def test_clone_copies_an_object(self, auth_config):
+        assert _add_address(auth_config, "test-clone-src", octet=211).get("status") == 0
+        try:
+            response = operations["json_rpc_clone"](auth_config, {
+                "url": f"{self.ADDR}/test-clone-src", "data": {"data": {"name": "test-clone-copy"}}})
+            assert response.get("status") == 0, response
+            copy = operations["json_rpc_get"](auth_config, {"url": f"{self.ADDR}/test-clone-copy"})
+            source = operations["json_rpc_get"](auth_config, {"url": f"{self.ADDR}/test-clone-src"})
+            assert copy.get("get_response", {}).get("subnet") == source.get("get_response", {}).get("subnet")
+            self._no_locks_left(auth_config)
+        finally:
+            _delete_address(auth_config, "test-clone-copy")
+            _delete_address(auth_config, "test-clone-src")
+
+    def test_replace_resets_fields_not_sent(self, auth_config):
+        name = "test-replace-1"
+        assert _add_address(auth_config, name, octet=212).get("status") == 0
+        try:
+            operations["json_rpc_update"](auth_config, {
+                "url": f"{self.ADDR}/{name}", "data": {"comment": "should be reset"}})
+            new = _make_address(name, octet=213)
+            response = operations["json_rpc_replace"](auth_config, {
+                "url": f"{self.ADDR}/{name}", "data": {"data": new}})
+            assert response.get("status") == 0, response
+            got = operations["json_rpc_get"](auth_config, {"url": f"{self.ADDR}/{name}"}).get("get_response", {})
+            assert got.get("subnet", [None])[0] == new["subnet"][0]
+            assert not got.get("comment"), "replace kept a field that was not sent"
+            self._no_locks_left(auth_config)
+        finally:
+            _delete_address(auth_config, name)
+
+
 class TestMinimalLockRelease:
     """Verifies that minimal (pkg/dev) scope locks are released after each op."""
 

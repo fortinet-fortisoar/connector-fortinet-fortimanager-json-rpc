@@ -1098,6 +1098,23 @@ def _file_lock(server_host: str, api_key: str, adom: str, timeout: float = None)
             handle.close()
 
 
+def move_params(params: dict) -> dict:
+    """Top-level move parameters FMG expects next to the url.
+
+    pyFMG nests keyword arguments under "data" for every method except get and clone,
+    and FMG then rejects the move -7 "Invalid option"; passed positionally they land
+    beside the url. The target must be a string: measured live, target=123 answers -3
+    "Object does not exist" while target="123" moves the policy.
+    """
+    option = (params.get("option") or "").strip().lower()
+    target = params.get("target")
+    if option not in ("before", "after"):
+        raise ConnectorError(f"Move position must be 'before' or 'after', not {params.get('option')!r}.")
+    if target in (None, ""):
+        raise ConnectorError("Move needs a target: the key of the object to move next to.")
+    return {"option": option, "target": str(target)}
+
+
 def perform_rpc_action(action: str, config: dict, params: dict) -> dict:
     server_host, username, password, api_key, verify_ssl = get_config(config)
     try:
@@ -1236,6 +1253,8 @@ def perform_rpc_action(action: str, config: dict, params: dict) -> dict:
                         method = params.get("method")
                         status, action_response = action_func(method, **data)
                         status = free_form_status(status, action_response)
+                    elif action == "move":
+                        status, action_response = action_func(url, move_params(params))
                     else:
                         status, action_response = action_func(url=url, **data)
 
