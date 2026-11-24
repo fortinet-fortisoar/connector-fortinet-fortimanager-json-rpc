@@ -479,6 +479,314 @@
               "targetStep": "/api/3/workflow_steps/b1c12c5a-8265-402d-973a-49b746a71040"
             }
           ]
+        },
+        {
+          "@type": "Workflow",
+          "uuid": "b2d82918-f6f4-451e-9f08-271b17a7181d",
+          "collection": "/api/3/workflow_collections/c11d3444-7674-4d31-ba69-eae27af4c7f6",
+          "triggerLimit": null,
+          "description": "A Generic FMG Update action that lets you specify any valid URL and data object",
+          "name": "JSON RPC Update",
+          "tag": "#Fortinet FortiManager JSON RPC",
+          "recordTags": [
+            "Fortinet",
+            "fortinet-fortimanager-json-rpc"
+          ],
+          "isActive": false,
+          "debug": false,
+          "singleRecordExecution": false,
+          "parameters": [],
+          "synchronous": false,
+          "triggerStep": "/api/3/workflow_steps/ceee90a0-f0f4-4dbc-82ba-2eb97b7e3b42",
+          "steps": [
+            {
+              "uuid": "ceee90a0-f0f4-4dbc-82ba-2eb97b7e3b42",
+              "@type": "WorkflowStep",
+              "name": "Start",
+              "description": null,
+              "status": null,
+              "arguments": {
+                "route": "f25c5992-6864-402a-bdbe-20896be6104f",
+                "title": "Fortinet FortiManager JSON RPC: JSON RPC Update",
+                "resources": [
+                  "alerts"
+                ],
+                "inputVariables": [],
+                "step_variables": {
+                  "input": {
+                    "records": "{{vars.input.records[0]}}"
+                  }
+                },
+                "singleRecordExecution": false,
+                "noRecordExecution": true,
+                "executeButtonText": "Execute"
+              },
+              "left": "20",
+              "top": "20",
+              "stepType": "/api/3/workflow_step_types/725244ae-98c1-41f4-9495-7da150173da7"
+            },
+            {
+              "uuid": "f25f49e7-abfc-401d-b58b-ebabd197589a",
+              "@type": "WorkflowStep",
+              "name": "JSON RPC Update",
+              "description": null,
+              "status": null,
+              "arguments": {
+                "name": "Fortinet FortiManager JSON RPC",
+                "config": "''",
+                "params": [],
+                "version": "1.1.0",
+                "connector": "fortinet-fortimanager-json-rpc",
+                "operation": "json_rpc_update",
+                "operationTitle": "JSON RPC Update"
+              },
+              "left": "188",
+              "top": "120",
+              "stepType": "/api/3/workflow_step_types/7bc5221a-aed7-4415-9add-a738c02d57c4"
+            }
+          ],
+          "routes": [
+            {
+              "@type": "WorkflowRoute",
+              "uuid": "51d7acc2-a73b-4f35-9df3-ca7a94c7c6b0",
+              "label": null,
+              "isExecuted": false,
+              "name": "Start-> JSON RPC Update",
+              "sourceStep": "/api/3/workflow_steps/ceee90a0-f0f4-4dbc-82ba-2eb97b7e3b42",
+              "targetStep": "/api/3/workflow_steps/f25f49e7-abfc-401d-b58b-ebabd197589a"
+            }
+          ]
+        },
+        {
+          "@type": "Workflow",
+          "uuid": "b4ab5438-595a-43c7-8f8f-048a90cc292b",
+          "collection": "/api/3/workflow_collections/c11d3444-7674-4d31-ba69-eae27af4c7f6",
+          "triggerLimit": null,
+          "description": "Moves an object before or after another one in the same table, e.g. to reorder firewall policies in a policy package.",
+          "name": "JSON RPC Move",
+          "tag": "#Fortinet FortiManager JSON RPC",
+          "recordTags": [
+            "Fortinet",
+            "fortinet-fortimanager-json-rpc"
+          ],
+          "isActive": false,
+          "debug": false,
+          "singleRecordExecution": false,
+          "parameters": [],
+          "synchronous": false,
+          "triggerStep": "/api/3/workflow_steps/d6077126-128a-4ca6-8597-6b0e0cbe24e0",
+          "steps": [
+            {
+              "uuid": "d6077126-128a-4ca6-8597-6b0e0cbe24e0",
+              "@type": "WorkflowStep",
+              "name": "Start",
+              "description": null,
+              "status": null,
+              "arguments": {
+                "route": "974e2d9a-7777-4454-81f0-b4950434e201",
+                "title": "Fortinet FortiManager JSON RPC: JSON RPC Move",
+                "resources": [
+                  "alerts"
+                ],
+                "inputVariables": [],
+                "step_variables": {
+                  "input": {
+                    "records": "{{vars.input.records[0]}}"
+                  }
+                },
+                "singleRecordExecution": false,
+                "noRecordExecution": true,
+                "executeButtonText": "Execute"
+              },
+              "left": "20",
+              "top": "20",
+              "stepType": "/api/3/workflow_step_types/16acdffe-72ae-458d-98a4-3288b27ad6b6"
+            },
+            {
+              "uuid": "75fef5cc-3b44-4a21-8d6c-1cb4724437c8",
+              "@type": "WorkflowStep",
+              "name": "JSON RPC Move",
+              "description": null,
+              "status": null,
+              "arguments": {
+                "name": "Fortinet FortiManager JSON RPC",
+                "config": "''",
+                "params": [],
+                "version": "1.1.0",
+                "connector": "fortinet-fortimanager-json-rpc",
+                "operation": "json_rpc_move",
+                "operationTitle": "JSON RPC Move"
+              },
+              "left": "188",
+              "top": "120",
+              "stepType": "/api/3/workflow_step_types/d7ff9705-5261-4199-9112-4ab1b643cb0d"
+            }
+          ],
+          "routes": [
+            {
+              "@type": "WorkflowRoute",
+              "uuid": "eaa80bf4-b9f3-4f26-afcc-f3fce75120bf",
+              "label": null,
+              "isExecuted": false,
+              "name": "Start-> JSON RPC Move",
+              "sourceStep": "/api/3/workflow_steps/d6077126-128a-4ca6-8597-6b0e0cbe24e0",
+              "targetStep": "/api/3/workflow_steps/75fef5cc-3b44-4a21-8d6c-1cb4724437c8"
+            }
+          ]
+        },
+        {
+          "@type": "Workflow",
+          "uuid": "aee7bb3b-68dc-41c4-91a3-cc4c8fdf04ae",
+          "collection": "/api/3/workflow_collections/c11d3444-7674-4d31-ba69-eae27af4c7f6",
+          "triggerLimit": null,
+          "description": "Copies an existing object under a new name (and any other fields you override).",
+          "name": "JSON RPC Clone",
+          "tag": "#Fortinet FortiManager JSON RPC",
+          "recordTags": [
+            "Fortinet",
+            "fortinet-fortimanager-json-rpc"
+          ],
+          "isActive": false,
+          "debug": false,
+          "singleRecordExecution": false,
+          "parameters": [],
+          "synchronous": false,
+          "triggerStep": "/api/3/workflow_steps/60c28f9d-a91e-466a-95fa-20841c434391",
+          "steps": [
+            {
+              "uuid": "60c28f9d-a91e-466a-95fa-20841c434391",
+              "@type": "WorkflowStep",
+              "name": "Start",
+              "description": null,
+              "status": null,
+              "arguments": {
+                "route": "946e2991-c7f5-4425-8b88-97ff6e79a1d4",
+                "title": "Fortinet FortiManager JSON RPC: JSON RPC Clone",
+                "resources": [
+                  "alerts"
+                ],
+                "inputVariables": [],
+                "step_variables": {
+                  "input": {
+                    "records": "{{vars.input.records[0]}}"
+                  }
+                },
+                "singleRecordExecution": false,
+                "noRecordExecution": true,
+                "executeButtonText": "Execute"
+              },
+              "left": "20",
+              "top": "20",
+              "stepType": "/api/3/workflow_step_types/5a546ce9-7bf3-4f2d-9255-275bd38d7587"
+            },
+            {
+              "uuid": "5555f6e7-9201-4649-83e2-0772b552aab5",
+              "@type": "WorkflowStep",
+              "name": "JSON RPC Clone",
+              "description": null,
+              "status": null,
+              "arguments": {
+                "name": "Fortinet FortiManager JSON RPC",
+                "config": "''",
+                "params": [],
+                "version": "1.1.0",
+                "connector": "fortinet-fortimanager-json-rpc",
+                "operation": "json_rpc_clone",
+                "operationTitle": "JSON RPC Clone"
+              },
+              "left": "188",
+              "top": "120",
+              "stepType": "/api/3/workflow_step_types/a3b6f979-05f4-4142-9a9c-aa03092d50e1"
+            }
+          ],
+          "routes": [
+            {
+              "@type": "WorkflowRoute",
+              "uuid": "7272a268-6e48-40b7-b88c-ca44adb766dd",
+              "label": null,
+              "isExecuted": false,
+              "name": "Start-> JSON RPC Clone",
+              "sourceStep": "/api/3/workflow_steps/60c28f9d-a91e-466a-95fa-20841c434391",
+              "targetStep": "/api/3/workflow_steps/5555f6e7-9201-4649-83e2-0772b552aab5"
+            }
+          ]
+        },
+        {
+          "@type": "Workflow",
+          "uuid": "0eed940d-d1d8-4caa-971f-4039a1d86261",
+          "collection": "/api/3/workflow_collections/c11d3444-7674-4d31-ba69-eae27af4c7f6",
+          "triggerLimit": null,
+          "description": "Replaces an object entirely. Any field you do not send is reset to its default; use JSON RPC Update to change only some fields.",
+          "name": "JSON RPC Replace",
+          "tag": "#Fortinet FortiManager JSON RPC",
+          "recordTags": [
+            "Fortinet",
+            "fortinet-fortimanager-json-rpc"
+          ],
+          "isActive": false,
+          "debug": false,
+          "singleRecordExecution": false,
+          "parameters": [],
+          "synchronous": false,
+          "triggerStep": "/api/3/workflow_steps/f3ce8be0-be22-4290-9982-b42799e487f7",
+          "steps": [
+            {
+              "uuid": "f3ce8be0-be22-4290-9982-b42799e487f7",
+              "@type": "WorkflowStep",
+              "name": "Start",
+              "description": null,
+              "status": null,
+              "arguments": {
+                "route": "4941cede-f8a6-42b6-a837-cb76f4420be5",
+                "title": "Fortinet FortiManager JSON RPC: JSON RPC Replace",
+                "resources": [
+                  "alerts"
+                ],
+                "inputVariables": [],
+                "step_variables": {
+                  "input": {
+                    "records": "{{vars.input.records[0]}}"
+                  }
+                },
+                "singleRecordExecution": false,
+                "noRecordExecution": true,
+                "executeButtonText": "Execute"
+              },
+              "left": "20",
+              "top": "20",
+              "stepType": "/api/3/workflow_step_types/5265c95b-2500-4cee-8b99-fb61736fd12d"
+            },
+            {
+              "uuid": "82118c71-2bea-491e-9a83-4663c18d63e8",
+              "@type": "WorkflowStep",
+              "name": "JSON RPC Replace",
+              "description": null,
+              "status": null,
+              "arguments": {
+                "name": "Fortinet FortiManager JSON RPC",
+                "config": "''",
+                "params": [],
+                "version": "1.1.0",
+                "connector": "fortinet-fortimanager-json-rpc",
+                "operation": "json_rpc_replace",
+                "operationTitle": "JSON RPC Replace"
+              },
+              "left": "188",
+              "top": "120",
+              "stepType": "/api/3/workflow_step_types/7ad84640-cecf-4965-85d2-da3c604e57b2"
+            }
+          ],
+          "routes": [
+            {
+              "@type": "WorkflowRoute",
+              "uuid": "0310d8e6-ae51-4f07-a5dc-a44d9a7cf5fc",
+              "label": null,
+              "isExecuted": false,
+              "name": "Start-> JSON RPC Replace",
+              "sourceStep": "/api/3/workflow_steps/f3ce8be0-be22-4290-9982-b42799e487f7",
+              "targetStep": "/api/3/workflow_steps/82118c71-2bea-491e-9a83-4663c18d63e8"
+            }
+          ]
         }
       ]
     }

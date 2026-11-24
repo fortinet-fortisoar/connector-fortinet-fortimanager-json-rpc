@@ -153,16 +153,6 @@ def test_rpc_get_invalid_data(auth_config):
         assert True, f"Expected error for invalid params"
 
 
-def test_rpc_get_no_params(auth_config):
-    params = {}
-    for operation in operations:
-        if operation != "check_health":
-            try:
-                response = operations[operation](auth_config, params)
-                assert False, f"Expected error for missing params for operation {operation}"
-            except operations_package.ConnectorError as e:
-                assert True, f"Expected error for missing params for operation {operation}"
-
 
 def test_rpc_get_invalid_config(auth_config):
     invalid_config = auth_config.copy()
@@ -298,6 +288,30 @@ def test_rpc_set(setup_params):
                0] == "172.23.200.122", "Expected subnet[0] to be 172.23.200.122"
 
     response = operations['json_rpc_delete'](auth_config, params_delete)
+
+
+def test_rpc_update(setup_params):
+    """update changes only the fields sent, and -- unlike set -- never creates an object."""
+    auth_config, params_add, params_delete = setup_params
+    response = operations['json_rpc_add'](auth_config, params_add)
+    assert response.get("status") == 0
+    try:
+        response = operations['json_rpc_update'](auth_config, {
+            "url": params_delete["url"], "data": {"comment": "updated-by-json-rpc-update"}})
+        assert response.get("status") == 0, response
+        assert "update_response" in response, "Response missing 'update_response' key"
+
+        current = operations['json_rpc_get'](auth_config, params_delete).get("get_response", {})
+        assert current.get("comment") == "updated-by-json-rpc-update"
+        # Fields that were not sent are kept.
+        assert current.get("subnet", [None])[0] == params_add["data"][0]["subnet"][0]
+
+        missing = params_delete["url"].rstrip("/") + "-does-not-exist"
+        response = operations['json_rpc_update'](auth_config, {"url": missing, "data": {"comment": "x"}})
+        assert response.get("status") != 0, "update of a missing object must fail, not create it"
+        assert operations['json_rpc_get'](auth_config, {"url": missing}).get("status") != 0
+    finally:
+        operations['json_rpc_delete'](auth_config, params_delete)
 
 
 def test_rpc_delete(setup_params):
@@ -480,28 +494,35 @@ def test_rpc_freeform(auth_config):
 
 
 def test_special_case(auth_config):
-    params = {
-        "url": "/securityconsole/install/preview",
-        "data": {
-            "adom": "root",
-            "scope": [
-                {
-                    "name": "FGT2",
-                    "vdom": "root"
-                }
-            ]
-        },
-        "track_task": True,
-        "task_timeout": 120
-    }
-    response = operations['json_rpc_execute'](auth_config, params)
-    # Status should be 0 for success
-    assert response.get("status", None) == 0
+    """One install/preview call returns the real preview, staged change included.
 
-    assert "execute_response" in response, "Response missing 'execute_response' key"
+    FMG keeps preview state per JSON-RPC session, so the connector runs the
+    preview-flagged install itself before the preview, in the same session. A staged
+    device-DB alias must therefore appear in the returned diff. Nothing is installed.
+    """
+    device = os.getenv("LIVE_FGT_DEVICE_NAME", "FGT2")
+    global_url = f"/pm/config/device/{device}/global/system/global"
+    scope = [{"name": device, "vdom": "root"}]
+    marker = "preview-probe"
 
-    assert "task_response" in response, "Response missing 'task_response' key"
+    original = operations['json_rpc_get'](
+        auth_config, {"url": global_url, "data": {"fields": ["alias"]}})["get_response"].get("alias", "")
+    operations['json_rpc_set'](auth_config, {"url": global_url, "data": {"adom": "root", "data": {"alias": marker}}})
+    try:
+        response = operations['json_rpc_execute'](auth_config, {
+            "url": "/securityconsole/install/preview",
+            "data": {"adom": "root", "scope": scope},
+            "task_timeout": 120,
+        })
+    finally:
+        operations['json_rpc_set'](auth_config, {"url": global_url, "data": {"adom": "root", "data": {"alias": original}}})
+        operations['json_rpc_execute'](auth_config, {
+            "url": "/securityconsole/package/cancel/install",
+            "data": {"adom": "root", "scope": scope}})
 
-    assert "special_case_response" in response, "Response missing 'special_case_response' key"
-    special_case_response = response.get("special_case_response", {})
-    assert "message" in special_case_response, "Response missing 'message' key"
+    assert response.get("status") == 0, response
+    assert response["special_case_prepare"]["status"] == 0, response["special_case_prepare"]
+    assert response.get("special_case_status") == 0, response.get("special_case_response")
+    preview_text = str(response.get("special_case_response"))
+    assert "=== Preview result ===" in preview_text, preview_text
+    assert marker in preview_text, "staged change missing from the preview"

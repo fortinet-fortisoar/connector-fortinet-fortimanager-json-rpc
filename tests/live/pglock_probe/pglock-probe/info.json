@@ -1,0 +1,64 @@
+{
+  "name": "pglock-probe",
+  "version": "0.0.2",
+  "label": "PG Advisory Lock Probe",
+  "description": "Test-only: measures whether a Postgres advisory lock taken from connector code is shared across FortiSOAR HA nodes.",
+  "publisher": "Fortinet CSE",
+  "cs_approved": false,
+  "cs_compatible": true,
+  "category": "Utilities",
+  "configuration": {
+    "fields": []
+  },
+  "operations": [
+    {
+      "operation": "probe_lock",
+      "title": "Probe Lock",
+      "annotation": "probe_lock",
+      "description": "Take a pg advisory lock, hold it, release (or abandon by closing the connection).",
+      "category": "investigation",
+      "is_config_required": false,
+      "visible": true,
+      "enabled": true,
+      "parameters": [
+        {
+          "name": "lock_key",
+          "title": "Lock key",
+          "type": "integer",
+          "editable": true,
+          "visible": true,
+          "required": true,
+          "value": 424242
+        },
+        {
+          "name": "hold_seconds",
+          "title": "Hold seconds",
+          "type": "integer",
+          "editable": true,
+          "visible": true,
+          "required": false,
+          "value": 20
+        },
+        {
+          "name": "wait_seconds",
+          "title": "Wait seconds",
+          "type": "integer",
+          "editable": true,
+          "visible": true,
+          "required": false,
+          "value": 60
+        },
+        {
+          "name": "mode",
+          "title": "Mode",
+          "type": "text",
+          "editable": true,
+          "visible": true,
+          "required": false,
+          "value": "release"
+        }
+      ],
+      "output_schema": {}
+    }
+  ]
+}

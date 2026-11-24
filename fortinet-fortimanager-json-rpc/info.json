@@ -1,6 +1,6 @@
 {
   "name": "fortinet-fortimanager-json-rpc",
-  "version": "1.1.0",
+  "version": "1.2.7",
   "label": "Fortinet FortiManager JSON RPC",
   "description": "The Fortinet FortiManager JSON RPC Connector is an advanced connector with freeform actions to use the JSON-RPC API directly. This connector puts the onus on the user to understand the FortiManager API. To use the connector that simplify actions please see the original Fortinet FortiManager Connector.",
   "publisher": "Fortinet CSE",
@@ -47,7 +47,10 @@
               "editable": true,
               "visible": true,
               "required": true,
-              "description": "Username with JSON-RPC enabled to access the Fortinet FortiManager server to which you will connect and perform the automated operations."
+              "description": "Username with JSON-RPC enabled to access the Fortinet FortiManager server to which you will connect and perform the automated operations.",
+              "isOnChange": true,
+              "onChangeParam": "Authentication Method",
+              "onChangeOption": "Username/Password"
             },
             {
               "name": "password",
@@ -56,7 +59,10 @@
               "editable": true,
               "visible": true,
               "required": true,
-              "description": "Password to access the Fortinet FortiManager server to which you will connect and perform the automated operations."
+              "description": "Password to access the Fortinet FortiManager server to which you will connect and perform the automated operations.",
+              "isOnChange": true,
+              "onChangeParam": "Authentication Method",
+              "onChangeOption": "Username/Password"
             }
           ],
           "API Key": [
@@ -67,11 +73,15 @@
               "visible": true,
               "type": "password",
               "name": "api_key",
-              "description": "API key to access the Fortinet FortiManager server to which you will connect and perform the automated operations.",
-              "tooltip": "Your FortiManager api key"
+              "description": "API key to access the Fortinet FortiManager server to which you will connect and perform the automated operations. FortiManager treats every request made with one API key as a single session, so the connector runs workspace-locking operations that share a key one at a time per ADOM. Inside FortiSOAR, including an HA cluster, this is enforced across all nodes; on a remote agent it only covers that agent, so give each agent its own key or use Username/Password.",
+              "tooltip": "Your FortiManager API key. Workers sharing one key share one FortiManager session; the connector serialises their workspace writes per ADOM.",
+              "isOnChange": true,
+              "onChangeParam": "Authentication Method",
+              "onChangeOption": "API Key"
             }
           ]
-        }
+        },
+        "isOnChange": false
       },
       {
         "name": "port",
@@ -116,6 +126,18 @@
         "value": true,
         "description": "Setting this to true adds a verbose flag to the request, so that the integers are translated to the string representation by FortiManager.",
         "isOnChange": false
+      },
+      {
+        "name": "minimal_locking",
+        "title": "Minimal Locking (Beta)",
+        "type": "checkbox",
+        "editable": true,
+        "visible": true,
+        "required": false,
+        "value": false,
+        "tooltip": "Beta feature. When enabled, locks only the policy package or device referenced in the URL instead of the full ADOM. Reduces workspace lock contention in environments with concurrent automation workers. Falls back to ADOM-level locking when no package or device can be parsed from the URL. Verify behavior in a test environment before enabling in production.",
+        "description": "When enabled, reduces workspace lock contention by locking only the policy package or device referenced in the URL rather than the entire ADOM. This is a beta feature.",
+        "isOnChange": false
       }
     ]
   },
@@ -125,6 +147,39 @@
       "title": "JSON RPC Add",
       "annotation": "json_rpc_add",
       "description": "A Generic FMG Add action that lets you specify any valid URL and data object",
+      "category": "investigation",
+      "is_config_required": true,
+      "visible": true,
+      "enabled": true,
+      "parameters": [
+        {
+          "name": "url",
+          "title": "URL",
+          "type": "text",
+          "editable": true,
+          "visible": true,
+          "required": true,
+          "placeholder": "/sys/login/user",
+          "description": "The url you wish to hit"
+        },
+        {
+          "name": "data",
+          "title": "Data",
+          "type": "json",
+          "editable": true,
+          "visible": true,
+          "required": true,
+          "placeholder": {},
+          "description": "Pass a json object for the data you want to send. "
+        }
+      ],
+      "output_schema": {}
+    },
+    {
+      "operation": "json_rpc_update",
+      "title": "JSON RPC Update",
+      "annotation": "json_rpc_update",
+      "description": "A Generic FMG Update action that lets you specify any valid URL and data object",
       "category": "investigation",
       "is_config_required": true,
       "visible": true,
@@ -182,6 +237,130 @@
           "required": true,
           "placeholder": {},
           "description": "Pass a json object for the data you want to send. "
+        }
+      ],
+      "output_schema": {}
+    },
+    {
+      "operation": "json_rpc_move",
+      "title": "JSON RPC Move",
+      "annotation": "json_rpc_move",
+      "description": "Moves an object before or after another one in the same table, e.g. to reorder firewall policies in a policy package.",
+      "category": "investigation",
+      "is_config_required": true,
+      "visible": true,
+      "enabled": true,
+      "parameters": [
+        {
+          "name": "url",
+          "title": "URL",
+          "type": "text",
+          "editable": true,
+          "visible": true,
+          "required": true,
+          "placeholder": "/pm/config/adom/root/pkg/default/firewall/policy/12",
+          "description": "URL of the object to move, e.g. /pm/config/adom/<adom>/pkg/<package>/firewall/policy/<policyid>.",
+          "tooltip": "URL of the object to move."
+        },
+        {
+          "name": "option",
+          "title": "Position",
+          "type": "select",
+          "options": [
+            "before",
+            "after"
+          ],
+          "value": "before",
+          "editable": true,
+          "visible": true,
+          "required": true,
+          "description": "Place the object before or after the target.",
+          "tooltip": "Place the object before or after the target."
+        },
+        {
+          "name": "target",
+          "title": "Target",
+          "type": "text",
+          "editable": true,
+          "visible": true,
+          "required": true,
+          "placeholder": "10",
+          "description": "Key of the object to move it next to, for a firewall policy its policy ID.",
+          "tooltip": "Key of the object to move it next to (a policy ID for firewall policies)."
+        }
+      ],
+      "output_schema": {}
+    },
+    {
+      "operation": "json_rpc_clone",
+      "title": "JSON RPC Clone",
+      "annotation": "json_rpc_clone",
+      "description": "Copies an existing object under a new name (and any other fields you override).",
+      "category": "investigation",
+      "is_config_required": true,
+      "visible": true,
+      "enabled": true,
+      "parameters": [
+        {
+          "name": "url",
+          "title": "URL",
+          "type": "text",
+          "editable": true,
+          "visible": true,
+          "required": true,
+          "placeholder": "/pm/config/adom/root/obj/firewall/address/web-server",
+          "description": "URL of the object to copy.",
+          "tooltip": "URL of the object to copy."
+        },
+        {
+          "name": "data",
+          "title": "Data",
+          "type": "json",
+          "editable": true,
+          "visible": true,
+          "required": true,
+          "placeholder": {
+            "data": {
+              "name": "web-server-copy"
+            }
+          },
+          "description": "The fields of the copy that differ from the original, wrapped in data, at least the new name: {\"data\": {\"name\": \"new-name\"}}.",
+          "tooltip": "Fields of the copy, at least the new name: {\"data\": {\"name\": \"new-name\"}}."
+        }
+      ],
+      "output_schema": {}
+    },
+    {
+      "operation": "json_rpc_replace",
+      "title": "JSON RPC Replace",
+      "annotation": "json_rpc_replace",
+      "description": "Replaces an object entirely. Any field you do not send is reset to its default; use JSON RPC Update to change only some fields.",
+      "category": "investigation",
+      "is_config_required": true,
+      "visible": true,
+      "enabled": true,
+      "parameters": [
+        {
+          "name": "url",
+          "title": "URL",
+          "type": "text",
+          "editable": true,
+          "visible": true,
+          "required": true,
+          "placeholder": "/pm/config/adom/root/obj/firewall/address/web-server",
+          "description": "URL of the object to replace.",
+          "tooltip": "URL of the object to replace."
+        },
+        {
+          "name": "data",
+          "title": "Data",
+          "type": "json",
+          "editable": true,
+          "visible": true,
+          "required": true,
+          "placeholder": {},
+          "description": "The complete object. Fields you leave out are reset to their defaults, not kept.",
+          "tooltip": "The complete object: fields you leave out are RESET, not kept."
         }
       ],
       "output_schema": {}
@@ -272,7 +451,10 @@
                 "editable": true,
                 "value": 21600,
                 "description": "The time in seconds to wait for the task to complete before returning an error",
-                "tooltip": "The time in seconds to wait for the task to complete before returning an error"
+                "tooltip": "The time in seconds to wait for the task to complete before returning an error",
+                "isOnChange": true,
+                "onChangeParam": "Track Task",
+                "onChangeOption": "true"
               },
               {
                 "title": "Zero Percent Timeout",
@@ -283,7 +465,10 @@
                 "editable": true,
                 "value": 30,
                 "description": "Timeout of task that has not progressed past 0%",
-                "tooltip": "Timeout of task that has not progressed past 0%"
+                "tooltip": "Timeout of task that has not progressed past 0%",
+                "isOnChange": true,
+                "onChangeParam": "Track Task",
+                "onChangeOption": "true"
               },
               {
                 "title": "Task Stale Timeout",
@@ -294,7 +479,10 @@
                 "editable": true,
                 "value": 120,
                 "description": "Timeout of task that has started but has not progressed",
-                "tooltip": "Timeout of task that has started but has not progressed"
+                "tooltip": "Timeout of task that has started but has not progressed",
+                "isOnChange": true,
+                "onChangeParam": "Track Task",
+                "onChangeOption": "true"
               },
               {
                 "title": "Delete Task On Timeout",
@@ -305,7 +493,10 @@
                 "editable": true,
                 "value": true,
                 "description": "If a task fails to complete it should be deleted before starting a new task on the device",
-                "tooltip": "If a task fails to complete it should be deleted before starting a new task on the device"
+                "tooltip": "If a task fails to complete it should be deleted before starting a new task on the device",
+                "isOnChange": true,
+                "onChangeParam": "Track Task",
+                "onChangeOption": "true"
               }
             ]
           }
@@ -341,10 +532,10 @@
           "type": "json",
           "editable": true,
           "visible": true,
-          "required": true,
+          "required": false,
           "placeholder": {},
           "value": {},
-          "description": "Pass a json object for the data you want to send. ",
+          "description": "Optional JSON object for the delete payload. Omit it to delete the object addressed by the URL, which is the common case.",
           "isOnChange": false,
           "onchange": {}
         }
@@ -407,6 +598,493 @@
             }
           ],
           "description": "Pass a json object for the data you want to send. "
+        }
+      ],
+      "output_schema": {}
+    },
+    {
+      "operation": "get_package_policies",
+      "title": "Get Package Policies",
+      "annotation": "get_package_policies",
+      "description": "This Action will get a specific package policies and will unpack all of the address members. ",
+      "category": "investigation",
+      "is_config_required": true,
+      "visible": true,
+      "enabled": true,
+      "parameters": [
+        {
+          "name": "adom",
+          "title": "Adom",
+          "type": "text",
+          "editable": true,
+          "visible": true,
+          "required": true,
+          "tooltip": "The adom the policy package lives in ",
+          "description": "The adom the policy package lives in "
+        },
+        {
+          "name": "policy_package",
+          "title": "Policy Package",
+          "type": "text",
+          "editable": true,
+          "visible": true,
+          "required": true,
+          "tooltip": "The name of the policy package",
+          "description": "The name of the policy package"
+        },
+        {
+          "name": "fields",
+          "title": "fields",
+          "type": "text",
+          "editable": true,
+          "visible": true,
+          "required": false,
+          "tooltip": "Comma seperated fields to return from the firewall policy. ",
+          "description": "Comma seperated fields to return from the firewall policy. "
+        }
+      ],
+      "output_schema": {}
+    },
+    {
+      "operation": "get_fortimanager_device_stats",
+      "title": "Get FortiManager Device Stats",
+      "annotation": "get_fortimanager_device_stats",
+      "description": "Gather comprehensive FortiManager device statistics including device details, firewall policies, policy statistics, and optional resource usage (CPU/Memory)",
+      "category": "investigation",
+      "is_config_required": true,
+      "visible": true,
+      "enabled": true,
+      "parameters": [
+        {
+          "type": "label",
+          "label": "Basic Settings",
+          "visible": true
+        },
+        {
+          "name": "adom",
+          "title": "ADOM",
+          "type": "text",
+          "editable": true,
+          "visible": true,
+          "required": false,
+          "placeholder": "root",
+          "description": "ADOM to query. Leave empty to query all ADOMs.",
+          "class": "group-element"
+        },
+        {
+          "name": "vdom",
+          "title": "VDOM",
+          "type": "text",
+          "editable": true,
+          "visible": true,
+          "required": false,
+          "value": "root",
+          "description": "VDOM to query for policies. Default is 'root'.",
+          "class": "group-element last"
+        },
+        {
+          "type": "label",
+          "label": "Device Query Options",
+          "visible": true
+        },
+        {
+          "name": "device_filter",
+          "title": "Device Filter",
+          "type": "json",
+          "editable": true,
+          "visible": true,
+          "required": false,
+          "value": [
+            [
+              "os_type",
+              "==",
+              "fos"
+            ],
+            "&&",
+            [
+              "conn_status",
+              "==",
+              "up"
+            ]
+          ],
+          "description": "Filter criteria for devices. Example: [[\"os_type\",\"==\",\"fos\"],\"&&\",[\"conn_status\",\"==\",\"up\"]]",
+          "class": "group-element"
+        },
+        {
+          "name": "device_fields",
+          "title": "Device Fields",
+          "type": "json",
+          "editable": true,
+          "visible": true,
+          "required": false,
+          "value": [
+            "name",
+            "hostname",
+            "platform_str",
+            "os_ver",
+            "conn_status",
+            "ip"
+          ],
+          "description": "List of device fields to retrieve. Leave empty for default fields."
+        },
+        {
+          "name": "device_options",
+          "title": "Device Options",
+          "type": "json",
+          "editable": true,
+          "visible": true,
+          "required": false,
+          "value": [
+            "extra info",
+            "assignment info"
+          ],
+          "description": "List of device options. Example: [\"extra info\",\"assignment info\",\"get meta\",\"loadsub\"]",
+          "class": "group-element last"
+        },
+        {
+          "type": "label",
+          "label": "Firewall Policy Options",
+          "visible": true
+        },
+        {
+          "name": "include_policies",
+          "title": "Include Policies",
+          "type": "checkbox",
+          "editable": true,
+          "visible": true,
+          "required": false,
+          "value": true,
+          "description": "Include firewall policies in the output. Default is true.",
+          "class": "group-element"
+        },
+        {
+          "name": "include_policy_stats",
+          "title": "Include Policy Stats",
+          "type": "checkbox",
+          "editable": true,
+          "visible": true,
+          "required": false,
+          "value": true,
+          "description": "Include firewall policy statistics in the output. Default is true."
+        },
+        {
+          "name": "merge_stats",
+          "title": "Merge Stats with Policies",
+          "type": "checkbox",
+          "editable": true,
+          "visible": true,
+          "required": false,
+          "value": true,
+          "description": "Merge policy statistics with policy data. Default is true."
+        },
+        {
+          "name": "include_policy_target",
+          "title": "Include Policy Target",
+          "type": "checkbox",
+          "editable": true,
+          "visible": true,
+          "required": false,
+          "value": true,
+          "description": "Include firewall policy target in the Policy output. Default is true."
+        },
+        {
+          "name": "include_uptime",
+          "title": "Include Uptime",
+          "type": "checkbox",
+          "editable": true,
+          "visible": true,
+          "required": false,
+          "value": true,
+          "description": "Include FortiManager system uptime in the output. Default is false."
+        },
+        {
+          "name": "policy_fields",
+          "title": "Policy Fields",
+          "type": "json",
+          "editable": true,
+          "visible": true,
+          "required": false,
+          "value": [
+            "policyid",
+            "name",
+            "srcintf",
+            "dstintf",
+            "action"
+          ],
+          "description": "List of policy fields to retrieve. Example: [\"policyid\",\"name\",\"srcintf\",\"dstintf\",\"action\"]. Leave empty for default fields."
+        },
+        {
+          "name": "stat_fields",
+          "title": "Stat Fields",
+          "type": "json",
+          "editable": true,
+          "visible": true,
+          "required": false,
+          "value": [
+            "policyid",
+            "bytes",
+            "packets",
+            "hit_count",
+            "last_used"
+          ],
+          "description": "List of stat fields to retrieve. Example: [\"policyid\",\"bytes\",\"packets\",\"hit_count\",\"last_used\"]. Leave empty for default fields.",
+          "class": "group-element last"
+        },
+        {
+          "type": "label",
+          "label": "Resource Usage Options",
+          "visible": true
+        },
+        {
+          "name": "include_resource_usage",
+          "title": "Include Resource Usage",
+          "type": "checkbox",
+          "editable": true,
+          "visible": true,
+          "required": false,
+          "value": true,
+          "description": "Include system resource usage (CPU/Memory) data. Default is false.",
+          "class": "group-element"
+        },
+        {
+          "name": "resource_summary_mode",
+          "title": "Resource Summary Mode",
+          "type": "select",
+          "editable": true,
+          "visible": true,
+          "required": false,
+          "description": "How to summarize resource data",
+          "options": [
+            "current_only",
+            "summary_only",
+            "full"
+          ],
+          "value": "summary_only"
+        },
+        {
+          "name": "resource_metrics",
+          "title": "Resource Metrics",
+          "type": "multiselect",
+          "editable": true,
+          "visible": true,
+          "required": false,
+          "options": [
+            "CPU",
+            "Memory",
+            "Disk",
+            "Session",
+            "Session6",
+            "Setup Rate",
+            "Setup Rate6",
+            "NPU Session",
+            "NPU Session6",
+            "NTurbo Session",
+            "NTurbo Session6",
+            "Disk Log Rate",
+            "FAZ Log Rate",
+            "FortiCloud Log Rate",
+            "FAZ Cloud Log Rate"
+          ],
+          "value": [
+            "CPU",
+            "Memory"
+          ],
+          "description": "List of metrics to include"
+        },
+        {
+          "name": "resource_time_windows",
+          "title": "Resource Time Windows",
+          "type": "multiselect",
+          "editable": true,
+          "visible": true,
+          "required": false,
+          "options": [
+            "1 Minute",
+            "10 Minutes",
+            "30 Minutes",
+            "1 Hour",
+            "12 Hours",
+            "24 Hours"
+          ],
+          "value": [
+            "1 Hour",
+            "24 Hours"
+          ],
+          "description": "List of time windows to include",
+          "class": "group-element last"
+        },
+        {
+          "type": "label",
+          "label": "Advanced Options",
+          "visible": true
+        },
+        {
+          "name": "additional_calls",
+          "title": "Additional Calls",
+          "type": "json",
+          "editable": true,
+          "visible": true,
+          "required": false,
+          "value": [
+            {
+              "url": "/api/v2/monitor/system/ha-history",
+              "return_key": "ha_history"
+            }
+          ],
+          "description": "Optional list of custom sys/proxy/json calls to query for each target. Each call should be a dict: {\"url\": \"...\", \"return_key\": \"...\", \"action\": \"...\", \"data\": {...}}. Example: [{\"url\": \"/api/v2/monitor/system/resource/usage\", \"return_key\": \"resource_usage\"}]",
+          "class": "group-element last"
+        }
+      ],
+      "output_schema": {
+        "status": "",
+        "devices": [
+          {
+            "target": "",
+            "status": "",
+            "errors": [],
+            "device_info": {
+              "oid": "",
+              "name": "",
+              "hostname": "",
+              "platform_str": "",
+              "os_ver": "",
+              "ip": "",
+              "sn": "",
+              "vdom": [],
+              "extra info": {},
+              "meta fields": {}
+            },
+            "policies": [],
+            "policy_count": ""
+          }
+        ],
+        "summary": {
+          "total_devices": "",
+          "devices_processed": "",
+          "devices_failed": ""
+        }
+      }
+    },
+    {
+      "operation": "json_rpc_gui",
+      "title": "JSON RPC GUI",
+      "annotation": "json_rpc_gui",
+      "description": "Execute GUI-based JSON RPC actions using the FortiManager flatui_proxy endpoint. Requires Username/Password authentication.",
+      "category": "investigation",
+      "is_config_required": true,
+      "visible": true,
+      "enabled": true,
+      "parameters": [
+        {
+          "name": "gui_method",
+          "title": "GUI Method",
+          "type": "select",
+          "editable": true,
+          "visible": true,
+          "required": true,
+          "description": "The GUI method to execute",
+          "options": [
+            "get",
+            "add",
+            "update",
+            "set",
+            "delete",
+            "replace",
+            "clone",
+            "exec",
+            "move"
+          ],
+          "value": "get"
+        },
+        {
+          "name": "url",
+          "title": "URL",
+          "type": "text",
+          "editable": true,
+          "visible": true,
+          "required": true,
+          "placeholder": "/gui/adoms",
+          "description": "The GUI endpoint URL routed by FortiManager's flatui_proxy (e.g., /gui/adoms, /gui/adoms/{adom_oid}/dvm/psirt). To find valid URLs, open the FortiManager web UI with browser DevTools and inspect the 'url' field of POST requests to /cgi-bin/module/flatui_proxy."
+        },
+        {
+          "name": "data",
+          "title": "Data",
+          "type": "json",
+          "editable": true,
+          "visible": true,
+          "required": false,
+          "placeholder": {},
+          "description": "Optional parameters to send with the request"
+        }
+      ],
+      "output_schema": {}
+    },
+    {
+      "operation": "get_device_vulnerabilities",
+      "title": "Get Device Vulnerabilities",
+      "annotation": "get_device_vulnerabilities",
+      "description": "Retrieve PSIRT vulnerability information for devices in an ADOM with optional filtering",
+      "category": "investigation",
+      "is_config_required": true,
+      "visible": true,
+      "enabled": true,
+      "parameters": [
+        {
+          "name": "adom_oid",
+          "title": "ADOM OID",
+          "type": "integer",
+          "editable": true,
+          "visible": true,
+          "required": true,
+          "placeholder": "223",
+          "description": "The ADOM ID (OID) to retrieve vulnerabilities for"
+        },
+        {
+          "name": "fortios_only",
+          "title": "FortiOS Only",
+          "type": "checkbox",
+          "editable": true,
+          "visible": true,
+          "required": false,
+          "value": false,
+          "description": "Return only FortiOS vulnerability information (excludes FortiProxy, FortiSASE, etc.)"
+        },
+        {
+          "name": "simplify",
+          "title": "Simplify Response",
+          "type": "checkbox",
+          "editable": true,
+          "visible": true,
+          "required": false,
+          "value": false,
+          "description": "Return simplified vulnerability data (IR number, CVE, title, severity, CVSS score, description, products)"
+        },
+        {
+          "name": "exclude_impacted_versions",
+          "title": "Exclude Impacted Versions",
+          "type": "checkbox",
+          "editable": true,
+          "visible": true,
+          "required": false,
+          "value": false,
+          "description": "Exclude the impacted version list (when unchecked, converts to simple version strings like ['7.6.0', '7.4.7'])"
+        },
+        {
+          "name": "severity_filter",
+          "title": "Severity Filter",
+          "type": "select",
+          "editable": true,
+          "visible": true,
+          "required": false,
+          "description": "Filter vulnerabilities by severity level",
+          "options": [
+            "",
+            "Critical",
+            "High",
+            "Medium",
+            "Low"
+          ],
+          "value": ""
         }
       ],
       "output_schema": {}
